@@ -25,9 +25,9 @@ Assets/
 ## 2단계: 기초 데이터 구조 개발
 
 ### 2.1 TileState.cs 작성
-**위치**: Assets/Scripts/TileState.cs
-**의존성**: 없음
-**설명**: 타일의 숫자 값과 색상을 저장하는 ScriptableObject
+**위치**: Assets/Scripts/TileState.cs  
+**의존성**: 없음  
+**설명**: 타일의 숫자 값과 색상을 저장하는 ScriptableObject  
 
 **핵심 구현 사항**:
 - `[CreateAssetMenu]` 어트리뷰트로 에셋 생성 가능하게 설정
@@ -40,9 +40,9 @@ Assets/
 ## 3단계: 그리드 시스템 개발 (하위 → 상위)
 
 ### 3.1 TileCell.cs 작성
-**위치**: Assets/Scripts/TileCell.cs
-**의존성**: Tile (순환 참조)
-**설명**: 그리드의 개별 셀을 나타내는 컴포넌트
+**위치**: Assets/Scripts/TileCell.cs  
+**의존성**: Tile (순환 참조)  
+**설명**: 그리드의 개별 셀을 나타내는 컴포넌트  
 
 **핵심 구현 사항**:
 - `coordinates` (Vector2Int): 셀의 좌표
