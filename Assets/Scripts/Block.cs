@@ -347,7 +347,14 @@ public class Block : MonoBehaviour, IPointerDownHandler, IBeginDragHandler, IDra
         {
             // Already moved - just finalize position
             SetGridPosition(gridX, gridY, false);
-            grid.CheckAdjacentBlocks(this);
+            bool merged = grid.CheckAdjacentBlocks(this);
+
+            // Spawn a new random block only if no merge occurred
+            if (!merged)
+            {
+                grid.SpawnRandomBlocks(1);
+            }
+
             grid.ResetDragSession(); // Reset drag session for all blocks
             return;
         }
@@ -371,7 +378,13 @@ public class Block : MonoBehaviour, IPointerDownHandler, IBeginDragHandler, IDra
                 {
                     gridX = targetX;
                     gridY = targetY;
-                    grid.CheckAdjacentBlocks(this);
+                    bool merged = grid.CheckAdjacentBlocks(this);
+
+                    // Spawn a new random block only if no merge occurred
+                    if (!merged)
+                    {
+                        grid.SpawnRandomBlocks(1);
+                    }
                 }
                 else
                 {
@@ -493,7 +506,13 @@ public class Block : MonoBehaviour, IPointerDownHandler, IBeginDragHandler, IDra
         // Wait for final animation to complete
         yield return new WaitForSeconds(smoothTime * 2f);
 
-        grid.CheckAdjacentBlocks(this);
+        bool merged = grid.CheckAdjacentBlocks(this);
+
+        // Spawn a new random block only if moved and no merge occurred
+        if (cellsMoved > 0 && !merged)
+        {
+            grid.SpawnRandomBlocks(1);
+        }
 
         isMoving = false;
     }

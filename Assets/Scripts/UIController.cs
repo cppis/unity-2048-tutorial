@@ -10,6 +10,7 @@ public class UIController : MonoBehaviour
 
     [Header("UI Elements")]
     public Toggle gravityToggle;
+    public Toggle autoSpawnToggle;
     public TMP_InputField widthInput;
     public TMP_InputField heightInput;
     public Button createGridButton;
@@ -59,11 +60,53 @@ public class UIController : MonoBehaviour
             spawnBlocksButton.onClick.AddListener(OnSpawnBlocksClicked);
         }
 
-        // Setup toggle listener
+        // Setup toggle listeners
         if (gravityToggle != null)
         {
             gravityToggle.isOn = false;
             gravityToggle.onValueChanged.AddListener(OnGravityToggled);
+            // Apply initial state
+            OnGravityToggled(gravityToggle.isOn);
+        }
+
+        // Auto-find Auto Spawn Toggle if not assigned
+        if (autoSpawnToggle == null)
+        {
+            // Try to find by name in the scene
+            GameObject[] allObjects = GameObject.FindObjectsOfType<GameObject>();
+            foreach (GameObject obj in allObjects)
+            {
+                if (obj.name.Contains("AutoSpawn") && obj.name.Contains("Toggle"))
+                {
+                    autoSpawnToggle = obj.GetComponent<Toggle>();
+                    if (autoSpawnToggle != null)
+                    {
+                        Debug.Log($"<color=cyan>[AUTO-FOUND]</color> Auto Spawn Toggle found automatically: {obj.name}");
+                        break;
+                    }
+                }
+            }
+        }
+
+        if (autoSpawnToggle != null)
+        {
+            // Read current toggle state (don't force it to true)
+            bool currentState = autoSpawnToggle.isOn;
+            autoSpawnToggle.onValueChanged.AddListener(OnAutoSpawnToggled);
+            // Apply current toggle state to sync with BlockGrid
+            Debug.Log($"<color=cyan>[SETUP]</color> Auto Spawn Toggle connected - current state: {(currentState ? "ON" : "OFF")}");
+            OnAutoSpawnToggled(currentState);
+        }
+        else
+        {
+            Debug.LogWarning("<color=yellow>[SETUP WARNING]</color> Auto Spawn Toggle not found. " +
+                          "Please create a Toggle named 'AutoSpawnToggle' or assign it in Inspector. " +
+                          "Auto spawn will remain enabled by default.");
+            // Set default state in BlockGrid even if toggle is missing
+            if (blockGrid != null)
+            {
+                blockGrid.SetAutoSpawn(true);
+            }
         }
 
         // Create initial grid
@@ -137,8 +180,8 @@ public class UIController : MonoBehaviour
         // Clear existing blocks first
         blockGrid.ClearBlocks();
 
-        // Spawn new blocks
-        blockGrid.SpawnRandomBlocks(blockCount);
+        // Spawn new blocks (force spawn even if auto-spawn is disabled)
+        blockGrid.SpawnRandomBlocks(blockCount, forceSpawn: true);
     }
 
     /// <summary>
@@ -153,5 +196,20 @@ public class UIController : MonoBehaviour
         }
 
         blockGrid.SetGravity(isOn);
+    }
+
+    /// <summary>
+    /// Toggles auto spawn of random blocks after moves
+    /// </summary>
+    public void OnAutoSpawnToggled(bool isOn)
+    {
+        if (blockGrid == null)
+        {
+            Debug.LogError("BlockGrid reference is missing! Cannot toggle auto-spawn.");
+            return;
+        }
+
+        Debug.Log($"<color=cyan>[UI TOGGLE]</color> Auto Spawn Toggle clicked: {isOn}");
+        blockGrid.SetAutoSpawn(isOn);
     }
 }

@@ -37,6 +37,10 @@ public class BlockGrid : MonoBehaviour
     public bool gravityEnabled = false;
     public float gravitySpeed = 5f;
 
+    [Header("Spawn Settings")]
+    [Tooltip("Auto-spawn new blocks after moves (controlled by UI Toggle)")]
+    public bool autoSpawnEnabled = false; // Default: disabled (will be set by UI Toggle)
+
     [Header("Visual")]
     public GameObject cellPrefab;
     public Color cellColor = new Color(0.8f, 0.8f, 0.8f, 0.3f);
@@ -165,6 +169,8 @@ public class BlockGrid : MonoBehaviour
         int dx = toX > fromX ? 1 : (toX < fromX ? -1 : 0);
         int dy = toY > fromY ? 1 : (toY < fromY ? -1 : 0);
 
+        Debug.Log($"<color=yellow>[MOVE]</color> Block at ({fromX},{fromY}) size {block.width}x{block.height} moving to ({toX},{toY}) → direction ({dx},{dy})");
+
         // Collect all blocks that need to be pushed
         List<BlockMoveInfo> blocksToMove = new List<BlockMoveInfo>();
 
@@ -206,6 +212,14 @@ public class BlockGrid : MonoBehaviour
             return false;
         }
 
+        // Log all planned moves
+        Debug.Log($"  Executing {blocksToMove.Count} moves:");
+        for (int i = 0; i < blocksToMove.Count; i++)
+        {
+            BlockMoveInfo moveInfo = blocksToMove[i];
+            Debug.Log($"    Move {i}: Block at ({moveInfo.fromX},{moveInfo.fromY}) size {moveInfo.block.width}x{moveInfo.block.height} → ({moveInfo.toX},{moveInfo.toY})");
+        }
+
         // Move all blocks (in reverse order to avoid conflicts)
         for (int i = blocksToMove.Count - 1; i >= 0; i--)
         {
@@ -220,6 +234,7 @@ public class BlockGrid : MonoBehaviour
             moveInfo.block.SetGridPosition(moveInfo.toX, moveInfo.toY, false); // Smooth animation
         }
 
+        Debug.Log($"<color=green>[MOVE SUCCESS]</color> All blocks moved successfully");
         return true;
     }
 
@@ -275,11 +290,16 @@ public class BlockGrid : MonoBehaviour
         // If there are blocking blocks, try to push them
         foreach (Block blockingBlock in blockingBlocks)
         {
+            // Calculate the direction this blocking block should move
+            // It should move in the same direction as the block pushing it
             int newX = blockingBlock.gridX + dx;
             int newY = blockingBlock.gridY + dy;
 
+            Debug.Log($"    [PUSH] Block at ({block.gridX},{block.gridY}) moving ({dx},{dy}) → pushing block at ({blockingBlock.gridX},{blockingBlock.gridY}) to ({newX},{newY})");
+
             if (!CanMoveBlockRecursive(blockingBlock, blockingBlock.gridX, blockingBlock.gridY, newX, newY, dx, dy, blocksToMove, processed, originalPositions))
             {
+                Debug.Log($"    [PUSH FAILED] Cannot push block at ({blockingBlock.gridX},{blockingBlock.gridY}) - movement blocked");
                 return false;
             }
         }
@@ -437,10 +457,31 @@ public class BlockGrid : MonoBehaviour
         transform.localPosition = offset;
     }
 
-    public void SpawnRandomBlocks(int count)
+    public void SpawnRandomBlocks(int count, bool forceSpawn = false)
     {
-        if (grid == null) return;
+        if (grid == null)
+        {
+            Debug.LogWarning("SpawnRandomBlocks: grid is null");
+            return;
+        }
 
+        // IMPORTANT: Auto-spawn check - only spawn if enabled OR forced by manual button
+        if (!autoSpawnEnabled && !forceSpawn)
+        {
+            Debug.Log($"<color=red>[BLOCKED]</color> Auto-spawn is OFF - blocks will NOT spawn (autoSpawnEnabled={autoSpawnEnabled}, forceSpawn={forceSpawn})");
+            return;
+        }
+
+        if (forceSpawn)
+        {
+            Debug.Log($"<color=green>[FORCE SPAWN]</color> Manual spawn button clicked - spawning {count} blocks");
+        }
+        else
+        {
+            Debug.Log($"<color=yellow>[AUTO SPAWN]</color> Auto-spawn is ON - spawning {count} blocks after move");
+        }
+
+        List<Block> newlySpawnedBlocks = new List<Block>();
         int spawned = 0;
         int attempts = 0;
         int maxAttempts = count * 10; // Prevent infinite loops
@@ -463,11 +504,19 @@ public class BlockGrid : MonoBehaviour
             if (CanPlaceBlock(x, y, size.x, size.y))
             {
                 SpawnBlock(x, y, randomColor, size.x, size.y);
+                // Track the newly spawned block
+                if (activeBlocks.Count > 0)
+                {
+                    Block lastBlock = activeBlocks[activeBlocks.Count - 1];
+                    newlySpawnedBlocks.Add(lastBlock);
+                }
                 spawned++;
             }
         }
 
-        // Silently continue if all blocks couldn't be spawned (grid might be too full)
+        // After all blocks are spawned, check for all possible merges
+        Debug.Log($"<color=cyan>[MERGE CHECK AFTER SPAWN]</color> Spawned {newlySpawnedBlocks.Count} blocks - checking entire grid for merges");
+        CheckAndMergeAllPossibleRectangles();
     }
 
     private List<Vector2Int> GetEmptyCells()
@@ -587,6 +636,8 @@ public class BlockGrid : MonoBehaviour
                 Block occupyingBlock = grid[checkX, checkY];
                 if (occupyingBlock != null && occupyingBlock != ignoreBlock)
                 {
+                    // Cell is occupied
+                    Debug.LogWarning($"<color=red>[PLACEMENT BLOCKED]</color> Cannot place {w}x{h} block at ({x},{y}) - cell ({checkX},{checkY}) occupied by block at ({occupyingBlock.gridX},{occupyingBlock.gridY}) size {occupyingBlock.width}x{occupyingBlock.height}");
                     return false;
                 }
             }
@@ -603,6 +654,12 @@ public class BlockGrid : MonoBehaviour
             {
                 if (IsValidPosition(x + bx, y + by))
                 {
+                    // Check if cell is already occupied (potential bug)
+                    Block existingBlock = grid[x + bx, y + by];
+                    if (existingBlock != null && existingBlock != block)
+                    {
+                        Debug.LogError($"<color=red>[GRID ERROR]</color> OccupyCells: Cell ({x + bx},{y + by}) already occupied by block at ({existingBlock.gridX},{existingBlock.gridY})! Overwriting...");
+                    }
                     grid[x + bx, y + by] = block;
                 }
             }
@@ -663,11 +720,22 @@ public class BlockGrid : MonoBehaviour
 
     /// <summary>
     /// Checks for adjacent blocks with matching colors in all 4 directions
+    /// First tries to merge into rectangle, then triggers match event
+    /// Returns true if merge occurred, false otherwise
     /// </summary>
-    public void CheckAdjacentBlocks(Block block)
+    public bool CheckAdjacentBlocks(Block block)
     {
-        if (block == null) return;
+        if (block == null) return false;
 
+        // 1. Try to find and merge rectangle first
+        List<Block> rectangleBlocks = FindRectangle(block);
+        if (rectangleBlocks != null && rectangleBlocks.Count > 1)
+        {
+            MergeBlocksToRectangle(rectangleBlocks);
+            return true; // Merge occurred
+        }
+
+        // 2. If no rectangle found, use existing match logic
         List<Block> matches = new List<Block>();
         matches.Add(block);
 
@@ -685,6 +753,8 @@ public class BlockGrid : MonoBehaviour
                 match.TriggerAdjacentMatch();
             }
         }
+
+        return false; // No merge occurred
     }
 
     private void CheckDirection(Block block, List<Block> matches, int dx, int dy)
@@ -704,6 +774,339 @@ public class BlockGrid : MonoBehaviour
             // Recursively check in the same direction
             CheckDirection(adjacentBlock, matches, dx, dy);
         }
+    }
+
+    /// <summary>
+    /// Finds all blocks of same color that form a rectangle starting from the given block
+    /// Returns null if no valid rectangle found, or list of blocks forming the rectangle
+    /// </summary>
+    private List<Block> FindRectangle(Block startBlock)
+    {
+        if (startBlock == null) return null;
+
+        Debug.Log($"<color=magenta>[MERGE CHECK]</color> FindRectangle called for block at ({startBlock.gridX},{startBlock.gridY}) size {startBlock.width}x{startBlock.height} color RGB({startBlock.blockColor.r:F2},{startBlock.blockColor.g:F2},{startBlock.blockColor.b:F2})");
+
+        // Find all connected blocks with same color using BFS
+        // Now supports blocks of any size (1x1, 1x2, 2x1, etc.)
+        List<Block> connectedBlocks = new List<Block>();
+        HashSet<Block> visited = new HashSet<Block>();
+        Queue<Block> queue = new Queue<Block>();
+
+        queue.Enqueue(startBlock);
+        visited.Add(startBlock);
+
+        while (queue.Count > 0)
+        {
+            Block current = queue.Dequeue();
+            connectedBlocks.Add(current);
+
+            Debug.Log($"  → Processing block at ({current.gridX},{current.gridY}) size {current.width}x{current.height} - checking {current.width * current.height} cells");
+
+            // Check all cells occupied by current block for adjacent blocks
+            for (int bx = 0; bx < current.width; bx++)
+            {
+                for (int by = 0; by < current.height; by++)
+                {
+                    int cellX = current.gridX + bx;
+                    int cellY = current.gridY + by;
+
+                    // Check all 4 directions from this cell
+                    int[] dx = { 1, -1, 0, 0 };
+                    int[] dy = { 0, 0, 1, -1 };
+                    string[] dirNames = { "Right", "Left", "Up", "Down" };
+
+                    for (int i = 0; i < 4; i++)
+                    {
+                        int checkX = cellX + dx[i];
+                        int checkY = cellY + dy[i];
+
+                        if (!IsValidPosition(checkX, checkY)) continue;
+
+                        Block adjacentBlock = grid[checkX, checkY];
+
+                        if (adjacentBlock != null &&
+                            !visited.Contains(adjacentBlock) &&
+                            adjacentBlock != current &&
+                            ColorsMatch(startBlock.blockColor, adjacentBlock.blockColor))
+                        {
+                            Debug.Log($"    → Found adjacent {adjacentBlock.width}x{adjacentBlock.height} block at ({adjacentBlock.gridX},{adjacentBlock.gridY}) via cell ({cellX},{cellY}) {dirNames[i]} → ({checkX},{checkY})");
+                            visited.Add(adjacentBlock);
+                            queue.Enqueue(adjacentBlock);
+                        }
+                    }
+                }
+            }
+        }
+
+        Debug.Log($"  → BFS found {connectedBlocks.Count} connected blocks:");
+        for (int i = 0; i < connectedBlocks.Count; i++)
+        {
+            Block b = connectedBlocks[i];
+            Debug.Log($"     Block {i}: ({b.gridX},{b.gridY}) size {b.width}x{b.height}");
+        }
+
+        // Need at least 2 blocks to form a rectangle
+        if (connectedBlocks.Count < 2)
+        {
+            Debug.Log($"  → Only 1 block found - no merge possible");
+            return null;
+        }
+
+        // Check if connected blocks form a valid rectangle
+        bool isRect = IsRectangle(connectedBlocks);
+        Debug.Log($"  → IsRectangle check: {isRect}");
+
+        if (isRect)
+        {
+            return connectedBlocks;
+        }
+
+        return null;
+    }
+
+    /// <summary>
+    /// Scans entire grid and merges all possible rectangles
+    /// Repeats until no more merges are possible
+    /// </summary>
+    private void CheckAndMergeAllPossibleRectangles()
+    {
+        bool mergeOccurred;
+        int mergeRounds = 0;
+
+        do
+        {
+            mergeOccurred = false;
+            mergeRounds++;
+            Debug.Log($"<color=cyan>[MERGE ROUND {mergeRounds}]</color> Scanning grid for merge opportunities");
+
+            // Create a copy of active blocks to avoid modification during iteration
+            List<Block> blocksToCheck = new List<Block>(activeBlocks);
+            HashSet<Block> alreadyMerged = new HashSet<Block>();
+
+            foreach (Block block in blocksToCheck)
+            {
+                // Skip if this block was already merged in this round
+                if (block == null || !activeBlocks.Contains(block) || alreadyMerged.Contains(block))
+                {
+                    continue;
+                }
+
+                // Try to find and merge rectangle
+                List<Block> rectangleBlocks = FindRectangle(block);
+                if (rectangleBlocks != null && rectangleBlocks.Count > 1)
+                {
+                    Debug.Log($"  → Found merge opportunity at ({block.gridX},{block.gridY})");
+
+                    // Mark all blocks in this rectangle as merged
+                    foreach (Block b in rectangleBlocks)
+                    {
+                        alreadyMerged.Add(b);
+                    }
+
+                    MergeBlocksToRectangle(rectangleBlocks);
+                    mergeOccurred = true;
+                    break; // Start new round after merge
+                }
+            }
+
+            if (!mergeOccurred)
+            {
+                Debug.Log($"  → No more merge opportunities found");
+            }
+
+        } while (mergeOccurred);
+
+        Debug.Log($"<color=cyan>[MERGE COMPLETE]</color> Completed {mergeRounds} merge rounds");
+    }
+
+    /// <summary>
+    /// Checks if the given blocks form a valid filled rectangle
+    /// Supports blocks of any size (1x1, 1x2, 2x1, etc.)
+    /// </summary>
+    private bool IsRectangle(List<Block> blocks)
+    {
+        if (blocks == null || blocks.Count < 2) return false;
+
+        // Find bounding box - consider each block's actual size
+        int minX = int.MaxValue;
+        int minY = int.MaxValue;
+        int maxX = int.MinValue;
+        int maxY = int.MinValue;
+
+        Debug.Log($"     [IsRectangle] Checking {blocks.Count} blocks:");
+        foreach (Block block in blocks)
+        {
+            // Bottom-left corner
+            if (block.gridX < minX) minX = block.gridX;
+            if (block.gridY < minY) minY = block.gridY;
+
+            // Top-right corner (considering block's width and height)
+            int blockMaxX = block.gridX + block.width - 1;
+            int blockMaxY = block.gridY + block.height - 1;
+
+            Debug.Log($"       Block at ({block.gridX},{block.gridY}) size {block.width}x{block.height} occupies cells ({block.gridX},{block.gridY}) to ({blockMaxX},{blockMaxY})");
+
+            if (blockMaxX > maxX) maxX = blockMaxX;
+            if (blockMaxY > maxY) maxY = blockMaxY;
+        }
+
+        int rectWidth = maxX - minX + 1;
+        int rectHeight = maxY - minY + 1;
+
+        Debug.Log($"     Bounding box: ({minX},{minY}) to ({maxX},{maxY}) = {rectWidth}x{rectHeight}");
+
+        // Verify all cells in rectangle are filled with blocks from the list
+        // (No need to check area vs block count since blocks can have different sizes)
+        HashSet<Block> blockSet = new HashSet<Block>(blocks);
+        int cellsChecked = 0;
+        for (int x = minX; x <= maxX; x++)
+        {
+            for (int y = minY; y <= maxY; y++)
+            {
+                cellsChecked++;
+                if (!IsValidPosition(x, y))
+                {
+                    Debug.Log($"     ✗ Cell ({x},{y}) is out of bounds - NOT a rectangle");
+                    return false;
+                }
+
+                Block cellBlock = grid[x, y];
+                if (cellBlock == null)
+                {
+                    Debug.Log($"     ✗ Cell ({x},{y}) is EMPTY - NOT a rectangle");
+                    return false;
+                }
+
+                if (!blockSet.Contains(cellBlock))
+                {
+                    Debug.Log($"     ✗ Cell ({x},{y}) contains different block at ({cellBlock.gridX},{cellBlock.gridY}) size {cellBlock.width}x{cellBlock.height} - NOT a rectangle");
+                    return false;
+                }
+            }
+        }
+
+        Debug.Log($"     ✓ All {cellsChecked} cells filled correctly - IS a valid {rectWidth}x{rectHeight} rectangle!");
+        return true;
+    }
+
+    /// <summary>
+    /// Merges multiple blocks into a single larger block
+    /// Supports blocks of any size (1x1, 1x2, 2x1, etc.)
+    /// </summary>
+    private void MergeBlocksToRectangle(List<Block> blocks)
+    {
+        if (blocks == null || blocks.Count < 2) return;
+
+        // Find bounding box - consider each block's actual size
+        int minX = int.MaxValue;
+        int minY = int.MaxValue;
+        int maxX = int.MinValue;
+        int maxY = int.MinValue;
+
+        Color mergeColor = blocks[0].blockColor;
+
+        foreach (Block block in blocks)
+        {
+            // Bottom-left corner
+            if (block.gridX < minX) minX = block.gridX;
+            if (block.gridY < minY) minY = block.gridY;
+
+            // Top-right corner (considering block's width and height)
+            int blockMaxX = block.gridX + block.width - 1;
+            int blockMaxY = block.gridY + block.height - 1;
+
+            if (blockMaxX > maxX) maxX = blockMaxX;
+            if (blockMaxY > maxY) maxY = blockMaxY;
+        }
+
+        int rectWidth = maxX - minX + 1;
+        int rectHeight = maxY - minY + 1;
+
+        Debug.Log($"<color=orange>[MERGE]</color> Merging {blocks.Count} blocks into {rectWidth}x{rectHeight} rectangle at ({minX},{minY})");
+
+        // IMPORTANT: Clear grid cells FIRST before destroying blocks
+        for (int x = minX; x <= maxX; x++)
+        {
+            for (int y = minY; y <= maxY; y++)
+            {
+                grid[x, y] = null;
+            }
+        }
+
+        // Remove old blocks from active list and destroy them
+        foreach (Block block in blocks)
+        {
+            activeBlocks.Remove(block);
+            Destroy(block.gameObject);
+        }
+
+        // Create new merged block (this will update grid cells via OccupyCells)
+        SpawnBlockDirect(minX, minY, mergeColor, rectWidth, rectHeight);
+
+        Debug.Log($"<color=orange>[MERGE COMPLETE]</color> Grid updated - merged block created at ({minX},{minY})");
+    }
+
+    /// <summary>
+    /// Spawns a block directly without checking for merges (used by MergeBlocksToRectangle)
+    /// </summary>
+    private void SpawnBlockDirect(int x, int y, Color color, int w = 1, int h = 1)
+    {
+        GameObject blockObj;
+
+        if (blockPrefab != null)
+        {
+            blockObj = Instantiate(blockPrefab, transform);
+        }
+        else
+        {
+            // Create default block (2D sprite)
+            blockObj = new GameObject("Block");
+            blockObj.transform.SetParent(transform);
+
+            // Add SpriteRenderer for 2D visuals
+            SpriteRenderer sr = blockObj.AddComponent<SpriteRenderer>();
+
+            // Create a simple sprite (sharp rectangle)
+            Texture2D texture = new Texture2D(32, 32);
+            Color[] pixels = new Color[32 * 32];
+            for (int i = 0; i < pixels.Length; i++)
+            {
+                pixels[i] = Color.white;
+            }
+            texture.SetPixels(pixels);
+            texture.Apply();
+
+            sr.sprite = Sprite.Create(texture, new Rect(0, 0, 32, 32), new Vector2(0.5f, 0.5f), 32);
+
+            // Add BoxCollider2D for click detection
+            BoxCollider2D collider = blockObj.AddComponent<BoxCollider2D>();
+            collider.size = Vector2.one;
+
+            // Add necessary components
+            if (blockObj.GetComponent<Block>() == null)
+            {
+                blockObj.AddComponent<Block>();
+            }
+        }
+
+        Block block = blockObj.GetComponent<Block>();
+        if (block == null)
+        {
+            block = blockObj.AddComponent<Block>();
+        }
+
+        // Ensure BoxCollider2D exists (for prefab case)
+        if (blockObj.GetComponent<BoxCollider2D>() == null)
+        {
+            BoxCollider2D collider = blockObj.AddComponent<BoxCollider2D>();
+            collider.size = Vector2.one;
+        }
+
+        block.Initialize(x, y, color, this, w, h);
+        OccupyCells(block, x, y, w, h);
+        activeBlocks.Add(block);
+
+        blockObj.name = $"Block_{x}_{y}_{w}x{h}";
     }
 
     private bool ColorsMatch(Color a, Color b)
@@ -770,6 +1173,19 @@ public class BlockGrid : MonoBehaviour
         if (enabled)
         {
             ApplyGravity();
+        }
+    }
+
+    public void SetAutoSpawn(bool enabled)
+    {
+        autoSpawnEnabled = enabled;
+        if (enabled)
+        {
+            Debug.Log($"<color=green>[AUTO-SPAWN ON]</color> New blocks will spawn after each move");
+        }
+        else
+        {
+            Debug.Log($"<color=red>[AUTO-SPAWN OFF]</color> New blocks will NOT spawn after moves");
         }
     }
 
