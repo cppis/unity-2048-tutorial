@@ -112,24 +112,10 @@ public class BlockGrid : MonoBehaviour
     /// </summary>
     public void UpdateGridData(Block block, int fromX, int fromY, int toX, int toY)
     {
-        // Safety check: validate target position
-        if (!IsValidPosition(toX, toY) || !IsValidPosition(toX + block.width - 1, toY + block.height - 1))
-        {
-            Debug.LogError($"UpdateGridData: Invalid target position ({toX}, {toY}) for block size {block.width}x{block.height}. Grid: {width}x{height}");
-            return;
-        }
+        if (!IsValidPosition(toX, toY) || !IsValidPosition(toX + block.width - 1, toY + block.height - 1)) return;
+        if (!IsValidPosition(fromX, fromY) || !IsValidPosition(fromX + block.width - 1, fromY + block.height - 1)) return;
 
-        // Safety check: validate source position
-        if (!IsValidPosition(fromX, fromY) || !IsValidPosition(fromX + block.width - 1, fromY + block.height - 1))
-        {
-            Debug.LogError($"UpdateGridData: Invalid source position ({fromX}, {fromY}) for block size {block.width}x{block.height}. Grid: {width}x{height}");
-            return;
-        }
-
-        // Free old cells
         FreeCells(fromX, fromY, block.width, block.height);
-
-        // Occupy new cells
         OccupyCells(block, toX, toY, block.width, block.height);
     }
 
@@ -165,62 +151,35 @@ public class BlockGrid : MonoBehaviour
 
     private bool TryMoveBlockWithPushing(Block block, int fromX, int fromY, int toX, int toY, int dragStartX = -1, int dragStartY = -1)
     {
-        // Calculate movement direction
         int dx = toX > fromX ? 1 : (toX < fromX ? -1 : 0);
         int dy = toY > fromY ? 1 : (toY < fromY ? -1 : 0);
 
-        Debug.Log($"<color=yellow>[MOVE]</color> Block at ({fromX},{fromY}) size {block.width}x{block.height} moving to ({toX},{toY}) → direction ({dx},{dy})");
-
-        // Collect all blocks that need to be pushed
         List<BlockMoveInfo> blocksToMove = new List<BlockMoveInfo>();
 
-        // Initialize drag session positions for all blocks (first time only)
         foreach (Block b in activeBlocks)
         {
-            if (b != null)
+            if (b != null && (b.dragSessionStartX < 0 || b.dragSessionStartY < 0))
             {
-                if (b.dragSessionStartX < 0 || b.dragSessionStartY < 0)
-                {
-                    // First time this block is involved in the drag session
-                    b.dragSessionStartX = b.gridX;
-                    b.dragSessionStartY = b.gridY;
-                }
+                b.dragSessionStartX = b.gridX;
+                b.dragSessionStartY = b.gridY;
             }
         }
 
-        // Track original positions for all blocks using drag session start positions
         Dictionary<Block, Vector2Int> originalPositions = new Dictionary<Block, Vector2Int>();
         foreach (Block b in activeBlocks)
         {
             if (b != null)
             {
                 if (b == block && dragStartX >= 0 && dragStartY >= 0)
-                {
-                    // Use the provided drag start position for the dragged block
                     originalPositions[b] = new Vector2Int(dragStartX, dragStartY);
-                }
                 else
-                {
-                    // For other blocks, use their drag session start position
                     originalPositions[b] = new Vector2Int(b.dragSessionStartX, b.dragSessionStartY);
-                }
             }
         }
 
         if (!CanMoveBlockRecursive(block, fromX, fromY, toX, toY, dx, dy, blocksToMove, new HashSet<Block>(), originalPositions))
-        {
             return false;
-        }
 
-        // Log all planned moves
-        Debug.Log($"  Executing {blocksToMove.Count} moves:");
-        for (int i = 0; i < blocksToMove.Count; i++)
-        {
-            BlockMoveInfo moveInfo = blocksToMove[i];
-            Debug.Log($"    Move {i}: Block at ({moveInfo.fromX},{moveInfo.fromY}) size {moveInfo.block.width}x{moveInfo.block.height} → ({moveInfo.toX},{moveInfo.toY})");
-        }
-
-        // Move all blocks (in reverse order to avoid conflicts)
         for (int i = blocksToMove.Count - 1; i >= 0; i--)
         {
             BlockMoveInfo moveInfo = blocksToMove[i];
@@ -231,10 +190,9 @@ public class BlockGrid : MonoBehaviour
         {
             BlockMoveInfo moveInfo = blocksToMove[i];
             OccupyCells(moveInfo.block, moveInfo.toX, moveInfo.toY, moveInfo.block.width, moveInfo.block.height);
-            moveInfo.block.SetGridPosition(moveInfo.toX, moveInfo.toY, false); // Smooth animation
+            moveInfo.block.SetGridPosition(moveInfo.toX, moveInfo.toY, false);
         }
 
-        Debug.Log($"<color=green>[MOVE SUCCESS]</color> All blocks moved successfully");
         return true;
     }
 
@@ -287,24 +245,15 @@ public class BlockGrid : MonoBehaviour
             }
         }
 
-        // If there are blocking blocks, try to push them
         foreach (Block blockingBlock in blockingBlocks)
         {
-            // Calculate the direction this blocking block should move
-            // It should move in the same direction as the block pushing it
             int newX = blockingBlock.gridX + dx;
             int newY = blockingBlock.gridY + dy;
 
-            Debug.Log($"    [PUSH] Block at ({block.gridX},{block.gridY}) moving ({dx},{dy}) → pushing block at ({blockingBlock.gridX},{blockingBlock.gridY}) to ({newX},{newY})");
-
             if (!CanMoveBlockRecursive(blockingBlock, blockingBlock.gridX, blockingBlock.gridY, newX, newY, dx, dy, blocksToMove, processed, originalPositions))
-            {
-                Debug.Log($"    [PUSH FAILED] Cannot push block at ({blockingBlock.gridX},{blockingBlock.gridY}) - movement blocked");
                 return false;
-            }
         }
 
-        // Add this block to the move list
         blocksToMove.Add(new BlockMoveInfo(block, fromX, fromY, toX, toY));
         return true;
     }
@@ -459,63 +408,27 @@ public class BlockGrid : MonoBehaviour
 
     public void SpawnRandomBlocks(int count, bool forceSpawn = false)
     {
-        if (grid == null)
-        {
-            Debug.LogWarning("SpawnRandomBlocks: grid is null");
-            return;
-        }
+        if (grid == null || (!autoSpawnEnabled && !forceSpawn)) return;
 
-        // IMPORTANT: Auto-spawn check - only spawn if enabled OR forced by manual button
-        if (!autoSpawnEnabled && !forceSpawn)
-        {
-            Debug.Log($"<color=red>[BLOCKED]</color> Auto-spawn is OFF - blocks will NOT spawn (autoSpawnEnabled={autoSpawnEnabled}, forceSpawn={forceSpawn})");
-            return;
-        }
-
-        if (forceSpawn)
-        {
-            Debug.Log($"<color=green>[FORCE SPAWN]</color> Manual spawn button clicked - spawning {count} blocks");
-        }
-        else
-        {
-            Debug.Log($"<color=yellow>[AUTO SPAWN]</color> Auto-spawn is ON - spawning {count} blocks after move");
-        }
-
-        List<Block> newlySpawnedBlocks = new List<Block>();
         int spawned = 0;
         int attempts = 0;
-        int maxAttempts = count * 10; // Prevent infinite loops
+        int maxAttempts = count * 10;
 
         while (spawned < count && attempts < maxAttempts)
         {
             attempts++;
-
-            // Random position
             int x = Random.Range(0, width);
             int y = Random.Range(0, height);
-
-            // Random size
             Vector2Int size = blockSizes[Random.Range(0, blockSizes.Length)];
-
-            // Random color
             Color randomColor = availableColors[Random.Range(0, availableColors.Length)];
 
-            // Try to spawn block
             if (CanPlaceBlock(x, y, size.x, size.y))
             {
                 SpawnBlock(x, y, randomColor, size.x, size.y);
-                // Track the newly spawned block
-                if (activeBlocks.Count > 0)
-                {
-                    Block lastBlock = activeBlocks[activeBlocks.Count - 1];
-                    newlySpawnedBlocks.Add(lastBlock);
-                }
                 spawned++;
             }
         }
 
-        // After all blocks are spawned, check for all possible merges
-        Debug.Log($"<color=cyan>[MERGE CHECK AFTER SPAWN]</color> Spawned {newlySpawnedBlocks.Count} blocks - checking entire grid for merges");
         CheckAndMergeAllPossibleRectangles();
     }
 
@@ -619,8 +532,6 @@ public class BlockGrid : MonoBehaviour
 
     public bool CanPlaceBlock(int x, int y, int w, int h, Block ignoreBlock = null)
     {
-        // Check if all cells needed for this block are valid and empty
-        // ignoreBlock: allows checking if a block can move to a new position
         for (int bx = 0; bx < w; bx++)
         {
             for (int by = 0; by < h; by++)
@@ -628,18 +539,10 @@ public class BlockGrid : MonoBehaviour
                 int checkX = x + bx;
                 int checkY = y + by;
 
-                if (!IsValidPosition(checkX, checkY))
-                {
-                    return false;
-                }
+                if (!IsValidPosition(checkX, checkY)) return false;
 
                 Block occupyingBlock = grid[checkX, checkY];
-                if (occupyingBlock != null && occupyingBlock != ignoreBlock)
-                {
-                    // Cell is occupied
-                    Debug.LogWarning($"<color=red>[PLACEMENT BLOCKED]</color> Cannot place {w}x{h} block at ({x},{y}) - cell ({checkX},{checkY}) occupied by block at ({occupyingBlock.gridX},{occupyingBlock.gridY}) size {occupyingBlock.width}x{occupyingBlock.height}");
-                    return false;
-                }
+                if (occupyingBlock != null && occupyingBlock != ignoreBlock) return false;
             }
         }
         return true;
@@ -647,21 +550,12 @@ public class BlockGrid : MonoBehaviour
 
     private void OccupyCells(Block block, int x, int y, int w, int h)
     {
-        // Mark all cells as occupied by this block
         for (int bx = 0; bx < w; bx++)
         {
             for (int by = 0; by < h; by++)
             {
                 if (IsValidPosition(x + bx, y + by))
-                {
-                    // Check if cell is already occupied (potential bug)
-                    Block existingBlock = grid[x + bx, y + by];
-                    if (existingBlock != null && existingBlock != block)
-                    {
-                        Debug.LogError($"<color=red>[GRID ERROR]</color> OccupyCells: Cell ({x + bx},{y + by}) already occupied by block at ({existingBlock.gridX},{existingBlock.gridY})! Overwriting...");
-                    }
                     grid[x + bx, y + by] = block;
-                }
             }
         }
     }
@@ -784,10 +678,6 @@ public class BlockGrid : MonoBehaviour
     {
         if (startBlock == null) return null;
 
-        Debug.Log($"<color=magenta>[MERGE CHECK]</color> FindRectangle called for block at ({startBlock.gridX},{startBlock.gridY}) size {startBlock.width}x{startBlock.height} color RGB({startBlock.blockColor.r:F2},{startBlock.blockColor.g:F2},{startBlock.blockColor.b:F2})");
-
-        // Find all connected blocks with same color using BFS
-        // Now supports blocks of any size (1x1, 1x2, 2x1, etc.)
         List<Block> connectedBlocks = new List<Block>();
         HashSet<Block> visited = new HashSet<Block>();
         Queue<Block> queue = new Queue<Block>();
@@ -800,9 +690,6 @@ public class BlockGrid : MonoBehaviour
             Block current = queue.Dequeue();
             connectedBlocks.Add(current);
 
-            Debug.Log($"  → Processing block at ({current.gridX},{current.gridY}) size {current.width}x{current.height} - checking {current.width * current.height} cells");
-
-            // Check all cells occupied by current block for adjacent blocks
             for (int bx = 0; bx < current.width; bx++)
             {
                 for (int by = 0; by < current.height; by++)
@@ -810,10 +697,8 @@ public class BlockGrid : MonoBehaviour
                     int cellX = current.gridX + bx;
                     int cellY = current.gridY + by;
 
-                    // Check all 4 directions from this cell
                     int[] dx = { 1, -1, 0, 0 };
                     int[] dy = { 0, 0, 1, -1 };
-                    string[] dirNames = { "Right", "Left", "Up", "Down" };
 
                     for (int i = 0; i < 4; i++)
                     {
@@ -829,7 +714,6 @@ public class BlockGrid : MonoBehaviour
                             adjacentBlock != current &&
                             ColorsMatch(startBlock.blockColor, adjacentBlock.blockColor))
                         {
-                            Debug.Log($"    → Found adjacent {adjacentBlock.width}x{adjacentBlock.height} block at ({adjacentBlock.gridX},{adjacentBlock.gridY}) via cell ({cellX},{cellY}) {dirNames[i]} → ({checkX},{checkY})");
                             visited.Add(adjacentBlock);
                             queue.Enqueue(adjacentBlock);
                         }
@@ -838,30 +722,8 @@ public class BlockGrid : MonoBehaviour
             }
         }
 
-        Debug.Log($"  → BFS found {connectedBlocks.Count} connected blocks:");
-        for (int i = 0; i < connectedBlocks.Count; i++)
-        {
-            Block b = connectedBlocks[i];
-            Debug.Log($"     Block {i}: ({b.gridX},{b.gridY}) size {b.width}x{b.height}");
-        }
-
-        // Need at least 2 blocks to form a rectangle
-        if (connectedBlocks.Count < 2)
-        {
-            Debug.Log($"  → Only 1 block found - no merge possible");
-            return null;
-        }
-
-        // Check if connected blocks form a valid rectangle
-        bool isRect = IsRectangle(connectedBlocks);
-        Debug.Log($"  → IsRectangle check: {isRect}");
-
-        if (isRect)
-        {
-            return connectedBlocks;
-        }
-
-        return null;
+        if (connectedBlocks.Count < 2) return null;
+        return IsRectangle(connectedBlocks) ? connectedBlocks : null;
     }
 
     /// <summary>
@@ -871,52 +733,27 @@ public class BlockGrid : MonoBehaviour
     private void CheckAndMergeAllPossibleRectangles()
     {
         bool mergeOccurred;
-        int mergeRounds = 0;
-
         do
         {
             mergeOccurred = false;
-            mergeRounds++;
-            Debug.Log($"<color=cyan>[MERGE ROUND {mergeRounds}]</color> Scanning grid for merge opportunities");
-
-            // Create a copy of active blocks to avoid modification during iteration
             List<Block> blocksToCheck = new List<Block>(activeBlocks);
             HashSet<Block> alreadyMerged = new HashSet<Block>();
 
             foreach (Block block in blocksToCheck)
             {
-                // Skip if this block was already merged in this round
                 if (block == null || !activeBlocks.Contains(block) || alreadyMerged.Contains(block))
-                {
                     continue;
-                }
 
-                // Try to find and merge rectangle
                 List<Block> rectangleBlocks = FindRectangle(block);
                 if (rectangleBlocks != null && rectangleBlocks.Count > 1)
                 {
-                    Debug.Log($"  → Found merge opportunity at ({block.gridX},{block.gridY})");
-
-                    // Mark all blocks in this rectangle as merged
-                    foreach (Block b in rectangleBlocks)
-                    {
-                        alreadyMerged.Add(b);
-                    }
-
+                    foreach (Block b in rectangleBlocks) alreadyMerged.Add(b);
                     MergeBlocksToRectangle(rectangleBlocks);
                     mergeOccurred = true;
-                    break; // Start new round after merge
+                    break;
                 }
             }
-
-            if (!mergeOccurred)
-            {
-                Debug.Log($"  → No more merge opportunities found");
-            }
-
         } while (mergeOccurred);
-
-        Debug.Log($"<color=cyan>[MERGE COMPLETE]</color> Completed {mergeRounds} merge rounds");
     }
 
     /// <summary>
@@ -927,65 +764,35 @@ public class BlockGrid : MonoBehaviour
     {
         if (blocks == null || blocks.Count < 2) return false;
 
-        // Find bounding box - consider each block's actual size
         int minX = int.MaxValue;
         int minY = int.MaxValue;
         int maxX = int.MinValue;
         int maxY = int.MinValue;
 
-        Debug.Log($"     [IsRectangle] Checking {blocks.Count} blocks:");
         foreach (Block block in blocks)
         {
-            // Bottom-left corner
             if (block.gridX < minX) minX = block.gridX;
             if (block.gridY < minY) minY = block.gridY;
 
-            // Top-right corner (considering block's width and height)
             int blockMaxX = block.gridX + block.width - 1;
             int blockMaxY = block.gridY + block.height - 1;
-
-            Debug.Log($"       Block at ({block.gridX},{block.gridY}) size {block.width}x{block.height} occupies cells ({block.gridX},{block.gridY}) to ({blockMaxX},{blockMaxY})");
 
             if (blockMaxX > maxX) maxX = blockMaxX;
             if (blockMaxY > maxY) maxY = blockMaxY;
         }
 
-        int rectWidth = maxX - minX + 1;
-        int rectHeight = maxY - minY + 1;
-
-        Debug.Log($"     Bounding box: ({minX},{minY}) to ({maxX},{maxY}) = {rectWidth}x{rectHeight}");
-
-        // Verify all cells in rectangle are filled with blocks from the list
-        // (No need to check area vs block count since blocks can have different sizes)
         HashSet<Block> blockSet = new HashSet<Block>(blocks);
-        int cellsChecked = 0;
         for (int x = minX; x <= maxX; x++)
         {
             for (int y = minY; y <= maxY; y++)
             {
-                cellsChecked++;
-                if (!IsValidPosition(x, y))
-                {
-                    Debug.Log($"     ✗ Cell ({x},{y}) is out of bounds - NOT a rectangle");
-                    return false;
-                }
+                if (!IsValidPosition(x, y)) return false;
 
                 Block cellBlock = grid[x, y];
-                if (cellBlock == null)
-                {
-                    Debug.Log($"     ✗ Cell ({x},{y}) is EMPTY - NOT a rectangle");
-                    return false;
-                }
-
-                if (!blockSet.Contains(cellBlock))
-                {
-                    Debug.Log($"     ✗ Cell ({x},{y}) contains different block at ({cellBlock.gridX},{cellBlock.gridY}) size {cellBlock.width}x{cellBlock.height} - NOT a rectangle");
-                    return false;
-                }
+                if (cellBlock == null || !blockSet.Contains(cellBlock)) return false;
             }
         }
 
-        Debug.Log($"     ✓ All {cellsChecked} cells filled correctly - IS a valid {rectWidth}x{rectHeight} rectangle!");
         return true;
     }
 
@@ -997,7 +804,6 @@ public class BlockGrid : MonoBehaviour
     {
         if (blocks == null || blocks.Count < 2) return;
 
-        // Find bounding box - consider each block's actual size
         int minX = int.MaxValue;
         int minY = int.MaxValue;
         int maxX = int.MinValue;
@@ -1007,11 +813,9 @@ public class BlockGrid : MonoBehaviour
 
         foreach (Block block in blocks)
         {
-            // Bottom-left corner
             if (block.gridX < minX) minX = block.gridX;
             if (block.gridY < minY) minY = block.gridY;
 
-            // Top-right corner (considering block's width and height)
             int blockMaxX = block.gridX + block.width - 1;
             int blockMaxY = block.gridY + block.height - 1;
 
@@ -1022,9 +826,6 @@ public class BlockGrid : MonoBehaviour
         int rectWidth = maxX - minX + 1;
         int rectHeight = maxY - minY + 1;
 
-        Debug.Log($"<color=orange>[MERGE]</color> Merging {blocks.Count} blocks into {rectWidth}x{rectHeight} rectangle at ({minX},{minY})");
-
-        // IMPORTANT: Clear grid cells FIRST before destroying blocks
         for (int x = minX; x <= maxX; x++)
         {
             for (int y = minY; y <= maxY; y++)
@@ -1033,17 +834,13 @@ public class BlockGrid : MonoBehaviour
             }
         }
 
-        // Remove old blocks from active list and destroy them
         foreach (Block block in blocks)
         {
             activeBlocks.Remove(block);
             Destroy(block.gameObject);
         }
 
-        // Create new merged block (this will update grid cells via OccupyCells)
         SpawnBlockDirect(minX, minY, mergeColor, rectWidth, rectHeight);
-
-        Debug.Log($"<color=orange>[MERGE COMPLETE]</color> Grid updated - merged block created at ({minX},{minY})");
     }
 
     /// <summary>
@@ -1179,14 +976,6 @@ public class BlockGrid : MonoBehaviour
     public void SetAutoSpawn(bool enabled)
     {
         autoSpawnEnabled = enabled;
-        if (enabled)
-        {
-            Debug.Log($"<color=green>[AUTO-SPAWN ON]</color> New blocks will spawn after each move");
-        }
-        else
-        {
-            Debug.Log($"<color=red>[AUTO-SPAWN OFF]</color> New blocks will NOT spawn after moves");
-        }
     }
 
     // Get grid bounds for camera

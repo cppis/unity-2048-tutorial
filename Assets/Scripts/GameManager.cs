@@ -5,6 +5,9 @@ using UnityEngine;
 [DefaultExecutionOrder(-1)]
 public class GameManager : MonoBehaviour
 {
+    private const float FADE_DURATION = 0.5f;
+    private const float GAME_OVER_DELAY = 1f;
+
     public static GameManager Instance { get; private set; }
 
     [SerializeField] private TileBoard board;
@@ -12,7 +15,7 @@ public class GameManager : MonoBehaviour
     [SerializeField] private TextMeshProUGUI scoreText;
     [SerializeField] private TextMeshProUGUI hiscoreText;
 
-    public int score { get; private set; } = 0;
+    public int score { get; private set; }
 
     private void Awake()
     {
@@ -32,52 +35,28 @@ public class GameManager : MonoBehaviour
 
     private void Start()
     {
-        // Only start new game if board is assigned (i.e., in 2048 game scene)
-        if (board != null)
-        {
-            NewGame();
-        }
+        if (board != null) NewGame();
     }
 
     public void NewGame()
     {
-        // reset score
         SetScore(0);
+        hiscoreText.text = LoadHiscore().ToString();
 
-        if (hiscoreText != null)
-        {
-            hiscoreText.text = LoadHiscore().ToString();
-        }
+        gameOver.alpha = 0f;
+        gameOver.interactable = false;
 
-        // hide game over screen
-        if (gameOver != null)
-        {
-            gameOver.alpha = 0f;
-            gameOver.interactable = false;
-        }
-
-        // update board state
-        if (board != null)
-        {
-            board.ClearBoard();
-            board.CreateTile();
-            board.CreateTile();
-            board.enabled = true;
-        }
+        board.ClearBoard();
+        board.CreateTile();
+        board.CreateTile();
+        board.enabled = true;
     }
 
     public void GameOver()
     {
-        if (board != null)
-        {
-            board.enabled = false;
-        }
-
-        if (gameOver != null)
-        {
-            gameOver.interactable = true;
-            StartCoroutine(Fade(gameOver, 1f, 1f));
-        }
+        board.enabled = false;
+        gameOver.interactable = true;
+        StartCoroutine(Fade(gameOver, 1f, GAME_OVER_DELAY));
     }
 
     private IEnumerator Fade(CanvasGroup canvasGroup, float to, float delay = 0f)
@@ -85,12 +64,11 @@ public class GameManager : MonoBehaviour
         yield return new WaitForSeconds(delay);
 
         float elapsed = 0f;
-        float duration = 0.5f;
         float from = canvasGroup.alpha;
 
-        while (elapsed < duration)
+        while (elapsed < FADE_DURATION)
         {
-            canvasGroup.alpha = Mathf.Lerp(from, to, elapsed / duration);
+            canvasGroup.alpha = Mathf.Lerp(from, to, elapsed / FADE_DURATION);
             elapsed += Time.deltaTime;
             yield return null;
         }
@@ -106,27 +84,18 @@ public class GameManager : MonoBehaviour
     private void SetScore(int score)
     {
         this.score = score;
-
-        if (scoreText != null)
-        {
-            scoreText.text = score.ToString();
-        }
-
+        scoreText.text = score.ToString();
         SaveHiscore();
     }
 
     private void SaveHiscore()
     {
         int hiscore = LoadHiscore();
-
-        if (score > hiscore) {
-            PlayerPrefs.SetInt("hiscore", score);
-        }
+        if (score > hiscore) PlayerPrefs.SetInt("hiscore", score);
     }
 
     private int LoadHiscore()
     {
         return PlayerPrefs.GetInt("hiscore", 0);
     }
-
 }

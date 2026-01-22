@@ -5,6 +5,15 @@ using System.Collections;
 
 public class Block : MonoBehaviour, IPointerDownHandler, IBeginDragHandler, IDragHandler, IEndDragHandler
 {
+    private const float DEFAULT_DECELERATION = 10f;
+    private const float DEFAULT_MIN_SPEED = 0.5f;
+    private const float DEFAULT_FRICTION = 2.5f;
+    private const float DEFAULT_SMOOTH_TIME = 0.1f;
+    private const float MIN_DRAG_DISTANCE = 0.2f;
+    private const float BLOCK_SIZE_OFFSET = 0.02f; // 2 pixels at 100 PPU
+    private const float SELECTION_SCALE = 1.1f;
+    private const float SELECTION_ALPHA = 0.3f;
+
     [Header("Block Properties")]
     public Color blockColor = Color.white;
     public int gridX;
@@ -20,21 +29,10 @@ public class Block : MonoBehaviour, IPointerDownHandler, IBeginDragHandler, IDra
     public BlockGrid grid;
 
     [Header("Movement Settings")]
-    [Tooltip("Deceleration rate (higher = stops faster)")]
-    public float deceleration = 10f;
-
-    [Tooltip("Minimum speed to keep moving")]
-    public float minSpeed = 0.5f;
-
-    [Tooltip("Friction per cell (speed lost when crossing each cell boundary)")]
-    [Range(0f, 5f)]
-    public float frictionPerCell = 2.5f;
-
-    [Tooltip("Smooth time for animation")]
-    public float smoothTime = 0.1f;
-
-    [Tooltip("Minimum drag distance to determine direction (in Unity units)")]
-    public float minDragDistanceForDirection = 0.2f;
+    public float deceleration = DEFAULT_DECELERATION;
+    public float minSpeed = DEFAULT_MIN_SPEED;
+    [Range(0f, 5f)] public float frictionPerCell = DEFAULT_FRICTION;
+    public float smoothTime = DEFAULT_SMOOTH_TIME;
 
     private bool isSelected = false;
     private Vector3 dragOffset;
@@ -60,27 +58,21 @@ public class Block : MonoBehaviour, IPointerDownHandler, IBeginDragHandler, IDra
 
     private void Awake()
     {
-        if (spriteRenderer == null)
-        {
-            spriteRenderer = GetComponent<SpriteRenderer>();
-        }
+        if (spriteRenderer == null) spriteRenderer = GetComponent<SpriteRenderer>();
 
-        // Create selection indicator if not assigned
         if (selectionIndicator == null && spriteRenderer != null)
         {
             GameObject indicatorObj = new GameObject("SelectionIndicator");
             indicatorObj.transform.SetParent(transform);
             indicatorObj.transform.localPosition = Vector3.zero;
-            indicatorObj.transform.localScale = Vector3.one * 1.1f;
+            indicatorObj.transform.localScale = Vector3.one * SELECTION_SCALE;
             selectionIndicator = indicatorObj.AddComponent<SpriteRenderer>();
             selectionIndicator.sprite = spriteRenderer.sprite;
-            selectionIndicator.color = new Color(1, 1, 1, 0.3f);
+            selectionIndicator.color = new Color(1, 1, 1, SELECTION_ALPHA);
             selectionIndicator.sortingOrder = spriteRenderer.sortingOrder - 1;
         }
 
         SetSelected(false);
-
-        // Initialize target position
         targetPosition = transform.position;
     }
 
@@ -126,23 +118,16 @@ public class Block : MonoBehaviour, IPointerDownHandler, IBeginDragHandler, IDra
     {
         if (grid != null)
         {
-            // Calculate total size with spacing
             float totalWidth = width * grid.cellSize + (width - 1) * grid.cellSpacing;
             float totalHeight = height * grid.cellSize + (height - 1) * grid.cellSpacing;
 
-            // Make block 2 pixels smaller than cell size (in Unity units, assuming 100 pixels per unit)
-            float pixelSize = 0.02f; // 2 pixels at 100 PPU (pixels per unit)
-            float scaleX = totalWidth - pixelSize;
-            float scaleY = totalHeight - pixelSize;
+            float scaleX = totalWidth - BLOCK_SIZE_OFFSET;
+            float scaleY = totalHeight - BLOCK_SIZE_OFFSET;
 
             transform.localScale = new Vector3(scaleX, scaleY, 1f);
 
-            // Update collider size
             BoxCollider2D collider = GetComponent<BoxCollider2D>();
-            if (collider != null)
-            {
-                collider.size = Vector2.one;
-            }
+            if (collider != null) collider.size = Vector2.one;
         }
     }
 
@@ -231,19 +216,15 @@ public class Block : MonoBehaviour, IPointerDownHandler, IBeginDragHandler, IDra
         // Calculate drag delta from original position (when drag started)
         Vector3 dragDelta = worldPos - dragStartPos;
 
-        // Determine primary direction (horizontal or vertical only) - only once when moved enough distance
         if (lastDragGrid.x == originalGridX && lastDragGrid.y == originalGridY)
         {
-            // Only determine direction when moved enough distance
             float dragDistance = dragDelta.magnitude;
-            if (dragDistance >= minDragDistanceForDirection)
+            if (dragDistance >= MIN_DRAG_DISTANCE)
             {
-                // Moved enough - determine direction
                 isDraggingHorizontal = Mathf.Abs(dragDelta.x) > Mathf.Abs(dragDelta.y);
             }
             else
             {
-                // Not moved enough - don't process movement yet
                 return;
             }
         }

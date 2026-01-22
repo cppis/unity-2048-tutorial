@@ -4,6 +4,8 @@ using UnityEngine;
 
 public class TileBoard : MonoBehaviour
 {
+    private const float MOVE_DELAY = 0.1f;
+
     [SerializeField] private Tile tilePrefab;
     [SerializeField] private TileState[] tileStates;
 
@@ -19,25 +21,13 @@ public class TileBoard : MonoBehaviour
 
     public void ClearBoard()
     {
-        if (grid == null)
-            return;
-
-        foreach (var cell in grid.cells) {
-            cell.tile = null;
-        }
-
-        foreach (var tile in tiles) {
-            Destroy(tile.gameObject);
-        }
-
+        foreach (var cell in grid.cells) cell.tile = null;
+        foreach (var tile in tiles) Destroy(tile.gameObject);
         tiles.Clear();
     }
 
     public void CreateTile()
     {
-        if (grid == null)
-            return;
-
         Tile tile = Instantiate(tilePrefab, grid.transform);
         tile.SetState(tileStates[0]);
         tile.Spawn(grid.GetRandomEmptyCell());
@@ -68,16 +58,11 @@ public class TileBoard : MonoBehaviour
             for (int y = startY; y >= 0 && y < grid.Height; y += incrementY)
             {
                 TileCell cell = grid.GetCell(x, y);
-
-                if (cell.Occupied) {
-                    changed |= MoveTile(cell.tile, direction);
-                }
+                if (cell.Occupied) changed |= MoveTile(cell.tile, direction);
             }
         }
 
-        if (changed) {
-            StartCoroutine(WaitForChanges());
-        }
+        if (changed) StartCoroutine(WaitForChanges());
     }
 
     private bool MoveTile(Tile tile, Vector2Int direction)
@@ -94,7 +79,6 @@ public class TileBoard : MonoBehaviour
                     MergeTiles(tile, adjacent.tile);
                     return true;
                 }
-
                 break;
             }
 
@@ -132,61 +116,34 @@ public class TileBoard : MonoBehaviour
     {
         for (int i = 0; i < tileStates.Length; i++)
         {
-            if (state == tileStates[i]) {
-                return i;
-            }
+            if (state == tileStates[i]) return i;
         }
-
         return -1;
     }
 
     private IEnumerator WaitForChanges()
     {
         waiting = true;
-
-        yield return new WaitForSeconds(0.1f);
-
+        yield return new WaitForSeconds(MOVE_DELAY);
         waiting = false;
 
-        foreach (var tile in tiles) {
-            tile.locked = false;
-        }
+        foreach (var tile in tiles) tile.locked = false;
 
-        if (tiles.Count != grid.Size) {
-            CreateTile();
-        }
-
-        if (CheckForGameOver()) {
-            GameManager.Instance.GameOver();
-        }
+        if (tiles.Count != grid.Size) CreateTile();
+        if (CheckForGameOver()) GameManager.Instance.GameOver();
     }
 
     public bool CheckForGameOver()
     {
-        if (tiles.Count != grid.Size) {
-            return false;
-        }
+        if (tiles.Count != grid.Size) return false;
 
         foreach (var tile in tiles)
         {
-            TileCell up = grid.GetAdjacentCell(tile.cell, Vector2Int.up);
-            TileCell down = grid.GetAdjacentCell(tile.cell, Vector2Int.down);
-            TileCell left = grid.GetAdjacentCell(tile.cell, Vector2Int.left);
-            TileCell right = grid.GetAdjacentCell(tile.cell, Vector2Int.right);
-
-            if (up != null && CanMerge(tile, up.tile)) {
-                return false;
-            }
-
-            if (down != null && CanMerge(tile, down.tile)) {
-                return false;
-            }
-
-            if (left != null && CanMerge(tile, left.tile)) {
-                return false;
-            }
-
-            if (right != null && CanMerge(tile, right.tile)) {
+            if (CanMergeInDirection(tile, Vector2Int.up) ||
+                CanMergeInDirection(tile, Vector2Int.down) ||
+                CanMergeInDirection(tile, Vector2Int.left) ||
+                CanMergeInDirection(tile, Vector2Int.right))
+            {
                 return false;
             }
         }
@@ -194,4 +151,9 @@ public class TileBoard : MonoBehaviour
         return true;
     }
 
+    private bool CanMergeInDirection(Tile tile, Vector2Int direction)
+    {
+        TileCell adjacent = grid.GetAdjacentCell(tile.cell, direction);
+        return adjacent != null && CanMerge(tile, adjacent.tile);
+    }
 }
