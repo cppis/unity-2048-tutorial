@@ -33,6 +33,9 @@ public class Block : MonoBehaviour, IPointerDownHandler, IBeginDragHandler, IDra
     [Tooltip("Smooth time for animation")]
     public float smoothTime = 0.1f;
 
+    [Tooltip("Minimum drag distance to determine direction (in Unity units)")]
+    public float minDragDistanceForDirection = 0.2f;
+
     private bool isSelected = false;
     private Vector3 dragOffset;
     private int originalGridX;
@@ -45,6 +48,12 @@ public class Block : MonoBehaviour, IPointerDownHandler, IBeginDragHandler, IDra
     private Vector3 velocity = Vector3.zero;
     private Vector2Int lastDragGrid; // Track last grid position during drag
     private bool isDraggingHorizontal; // Track drag direction
+
+    // Track drag session start position for this block
+    [System.NonSerialized]
+    public int dragSessionStartX = -1;
+    [System.NonSerialized]
+    public int dragSessionStartY = -1;
 
     // Event triggered when adjacent blocks with matching colors are found
     public event Action<Block> OnAdjacentMatchFound;
@@ -222,11 +231,21 @@ public class Block : MonoBehaviour, IPointerDownHandler, IBeginDragHandler, IDra
         // Calculate drag delta from original position (when drag started)
         Vector3 dragDelta = worldPos - dragStartPos;
 
-        // Determine primary direction (horizontal or vertical only) - only once at the start
+        // Determine primary direction (horizontal or vertical only) - only once when moved enough distance
         if (lastDragGrid.x == originalGridX && lastDragGrid.y == originalGridY)
         {
-            // First drag movement - determine direction
-            isDraggingHorizontal = Mathf.Abs(dragDelta.x) > Mathf.Abs(dragDelta.y);
+            // Only determine direction when moved enough distance
+            float dragDistance = dragDelta.magnitude;
+            if (dragDistance >= minDragDistanceForDirection)
+            {
+                // Moved enough - determine direction
+                isDraggingHorizontal = Mathf.Abs(dragDelta.x) > Mathf.Abs(dragDelta.y);
+            }
+            else
+            {
+                // Not moved enough - don't process movement yet
+                return;
+            }
         }
 
         // Use the determined direction consistently
@@ -251,21 +270,36 @@ public class Block : MonoBehaviour, IPointerDownHandler, IBeginDragHandler, IDra
         // Check if we moved to a different grid cell
         if (currentDragGrid.x != lastDragGrid.x || currentDragGrid.y != lastDragGrid.y)
         {
-            // Try to move to the new grid position (pushing blocks if needed)
-            // IMPORTANT: Use lastDragGrid (current position) as fromX/fromY
-            bool canMove = grid.TryMoveBlockWithPushingPublic(this, lastDragGrid.x, lastDragGrid.y, currentDragGrid.x, currentDragGrid.y);
+            // Limit to one cell movement from original position
+            int moveDistance = isDraggingHorizontal
+                ? Mathf.Abs(currentDragGrid.x - originalGridX)
+                : Mathf.Abs(currentDragGrid.y - originalGridY);
 
-            if (canMove)
+            // Only allow movement if we haven't exceeded one cell from original position
+            if (moveDistance <= 1)
             {
-                // Successfully moved - update position
-                // TryMoveBlockWithPushingPublic already updated grid data and called SetGridPosition
-                gridX = currentDragGrid.x;
-                gridY = currentDragGrid.y;
-                lastDragGrid = currentDragGrid;
+                // Try to move to the new grid position (pushing blocks if needed)
+                // IMPORTANT: Use lastDragGrid (current position) as fromX/fromY
+                // Pass originalGridX/Y so BlockGrid knows the drag start position
+                bool canMove = grid.TryMoveBlockWithPushingPublic(this, lastDragGrid.x, lastDragGrid.y, currentDragGrid.x, currentDragGrid.y, originalGridX, originalGridY);
+
+                if (canMove)
+                {
+                    // Successfully moved - update position
+                    // TryMoveBlockWithPushingPublic already updated grid data and called SetGridPosition
+                    gridX = currentDragGrid.x;
+                    gridY = currentDragGrid.y;
+                    lastDragGrid = currentDragGrid;
+                }
+                else
+                {
+                    // Cannot move - stay at current grid position
+                    currentDragGrid = lastDragGrid;
+                }
             }
             else
             {
-                // Cannot move - stay at current grid position
+                // Already moved one cell - don't allow further movement
                 currentDragGrid = lastDragGrid;
             }
         }
@@ -307,35 +341,58 @@ public class Block : MonoBehaviour, IPointerDownHandler, IBeginDragHandler, IDra
 
         int cellsAlreadyMoved = Mathf.Abs(gridDistanceMoved);
 
-        // Calculate drag speed for momentum
-        float dragTime = Time.time - dragStartTime;
-        Vector3 dragDistance = lastDragPos - dragStartPos;
-        float totalSize = grid.cellSize + grid.cellSpacing;
-
-        // Calculate distance in the determined direction only
-        float dragDistanceInDirection = isDraggingHorizontal ? dragDistance.x : dragDistance.y;
-        float dragDistanceInCells = Mathf.Abs(dragDistanceInDirection) / totalSize;
-
-        // Only apply momentum if there was actual movement and drag was fast enough
-        if (cellsAlreadyMoved > 0 && dragTime > 0.01f && dragDistanceInCells > 0.5f)
+        // Limit to one cell movement only
+        // If already moved during drag, no additional movement
+        if (cellsAlreadyMoved > 0)
         {
-            // Calculate momentum speed
-            float dragSpeed = dragDistanceInCells / dragTime;
-
-            // Additional cells to move based on momentum (beyond what was already moved)
-            int additionalCells = Mathf.RoundToInt(dragSpeed * 0.3f); // Reduced multiplier for more control
-
-            if (additionalCells > 0)
-            {
-                float initialSpeed = dragSpeed * 0.5f;
-                StartCoroutine(SlideWithDeceleration(dx, dy, initialSpeed, additionalCells));
-                return;
-            }
+            // Already moved - just finalize position
+            SetGridPosition(gridX, gridY, false);
+            grid.CheckAdjacentBlocks(this);
+            grid.ResetDragSession(); // Reset drag session for all blocks
+            return;
         }
 
-        // No momentum - just stay at current position
-        SetGridPosition(gridX, gridY, false);
-        grid.CheckAdjacentBlocks(this);
+        // If didn't move during drag, try to move one cell based on drag direction
+        if (dx != 0 || dy != 0)
+        {
+            int targetX = originalGridX + dx;
+            int targetY = originalGridY + dy;
+
+            // Check bounds
+            if (targetX >= 0 && targetX + width <= grid.width &&
+                targetY >= 0 && targetY + height <= grid.height)
+            {
+                // Try to move one cell
+                int currentGridX = gridX;
+                int currentGridY = gridY;
+                bool canMove = grid.TryMoveBlockWithPushingPublic(this, currentGridX, currentGridY, targetX, targetY, originalGridX, originalGridY);
+
+                if (canMove)
+                {
+                    gridX = targetX;
+                    gridY = targetY;
+                    grid.CheckAdjacentBlocks(this);
+                }
+                else
+                {
+                    // Cannot move - stay at current position
+                    SetGridPosition(gridX, gridY, false);
+                }
+            }
+            else
+            {
+                // Out of bounds - stay at current position
+                SetGridPosition(gridX, gridY, false);
+            }
+        }
+        else
+        {
+            // No movement - just finalize position
+            SetGridPosition(gridX, gridY, false);
+        }
+
+        // Reset drag session for all blocks when drag ends
+        grid.ResetDragSession();
     }
 
     private void SnapToNearestGrid()
@@ -350,7 +407,7 @@ public class Block : MonoBehaviour, IPointerDownHandler, IBeginDragHandler, IDra
             // IMPORTANT: Save current position before calling TryMoveBlockWithPushingPublic
             int currentGridX = gridX;
             int currentGridY = gridY;
-            bool canMove = grid.TryMoveBlockWithPushingPublic(this, currentGridX, currentGridY, targetGrid.x, targetGrid.y);
+            bool canMove = grid.TryMoveBlockWithPushingPublic(this, currentGridX, currentGridY, targetGrid.x, targetGrid.y, originalGridX, originalGridY);
 
             if (canMove)
             {
@@ -397,7 +454,7 @@ public class Block : MonoBehaviour, IPointerDownHandler, IBeginDragHandler, IDra
             // IMPORTANT: Use current gridX/gridY as fromX/fromY before they're updated
             int currentGridX = gridX;
             int currentGridY = gridY;
-            bool canMove = grid.TryMoveBlockWithPushingPublic(this, currentGridX, currentGridY, targetX, targetY);
+            bool canMove = grid.TryMoveBlockWithPushingPublic(this, currentGridX, currentGridY, targetX, targetY, originalGridX, originalGridY);
 
             if (!canMove)
             {

@@ -51,9 +51,24 @@ public class BlockGrid : MonoBehaviour
         // Initialize will be called from UI
     }
 
-    public bool TryMoveBlockWithPushingPublic(Block block, int fromX, int fromY, int toX, int toY)
+    public bool TryMoveBlockWithPushingPublic(Block block, int fromX, int fromY, int toX, int toY, int dragStartX = -1, int dragStartY = -1)
     {
-        return TryMoveBlockWithPushing(block, fromX, fromY, toX, toY);
+        return TryMoveBlockWithPushing(block, fromX, fromY, toX, toY, dragStartX, dragStartY);
+    }
+
+    /// <summary>
+    /// Resets drag session positions for all blocks (call when drag ends)
+    /// </summary>
+    public void ResetDragSession()
+    {
+        foreach (Block b in activeBlocks)
+        {
+            if (b != null)
+            {
+                b.dragSessionStartX = -1;
+                b.dragSessionStartY = -1;
+            }
+        }
     }
 
     // Check if move is possible without actually moving (for momentum movement)
@@ -75,7 +90,17 @@ public class BlockGrid : MonoBehaviour
         // Collect all blocks that need to be pushed
         List<BlockMoveInfo> blocksToMove = new List<BlockMoveInfo>();
 
-        return CanMoveBlockRecursive(block, fromX, fromY, toX, toY, dx, dy, blocksToMove, new HashSet<Block>());
+        // Track original positions for all blocks
+        Dictionary<Block, Vector2Int> originalPositions = new Dictionary<Block, Vector2Int>();
+        foreach (Block b in activeBlocks)
+        {
+            if (b != null)
+            {
+                originalPositions[b] = new Vector2Int(b.gridX, b.gridY);
+            }
+        }
+
+        return CanMoveBlockRecursive(block, fromX, fromY, toX, toY, dx, dy, blocksToMove, new HashSet<Block>(), originalPositions);
     }
 
     /// <summary>
@@ -116,7 +141,17 @@ public class BlockGrid : MonoBehaviour
         // Collect all blocks that need to be pushed
         List<BlockMoveInfo> blocksToMove = new List<BlockMoveInfo>();
 
-        if (!CanMoveBlockRecursive(block, fromX, fromY, toX, toY, dx, dy, blocksToMove, new HashSet<Block>()))
+        // Track original positions for all blocks
+        Dictionary<Block, Vector2Int> originalPositions = new Dictionary<Block, Vector2Int>();
+        foreach (Block b in activeBlocks)
+        {
+            if (b != null)
+            {
+                originalPositions[b] = new Vector2Int(b.gridX, b.gridY);
+            }
+        }
+
+        if (!CanMoveBlockRecursive(block, fromX, fromY, toX, toY, dx, dy, blocksToMove, new HashSet<Block>(), originalPositions))
         {
             return null; // Cannot move
         }
@@ -124,7 +159,7 @@ public class BlockGrid : MonoBehaviour
         return blocksToMove;
     }
 
-    private bool TryMoveBlockWithPushing(Block block, int fromX, int fromY, int toX, int toY)
+    private bool TryMoveBlockWithPushing(Block block, int fromX, int fromY, int toX, int toY, int dragStartX = -1, int dragStartY = -1)
     {
         // Calculate movement direction
         int dx = toX > fromX ? 1 : (toX < fromX ? -1 : 0);
@@ -133,7 +168,40 @@ public class BlockGrid : MonoBehaviour
         // Collect all blocks that need to be pushed
         List<BlockMoveInfo> blocksToMove = new List<BlockMoveInfo>();
 
-        if (!CanMoveBlockRecursive(block, fromX, fromY, toX, toY, dx, dy, blocksToMove, new HashSet<Block>()))
+        // Initialize drag session positions for all blocks (first time only)
+        foreach (Block b in activeBlocks)
+        {
+            if (b != null)
+            {
+                if (b.dragSessionStartX < 0 || b.dragSessionStartY < 0)
+                {
+                    // First time this block is involved in the drag session
+                    b.dragSessionStartX = b.gridX;
+                    b.dragSessionStartY = b.gridY;
+                }
+            }
+        }
+
+        // Track original positions for all blocks using drag session start positions
+        Dictionary<Block, Vector2Int> originalPositions = new Dictionary<Block, Vector2Int>();
+        foreach (Block b in activeBlocks)
+        {
+            if (b != null)
+            {
+                if (b == block && dragStartX >= 0 && dragStartY >= 0)
+                {
+                    // Use the provided drag start position for the dragged block
+                    originalPositions[b] = new Vector2Int(dragStartX, dragStartY);
+                }
+                else
+                {
+                    // For other blocks, use their drag session start position
+                    originalPositions[b] = new Vector2Int(b.dragSessionStartX, b.dragSessionStartY);
+                }
+            }
+        }
+
+        if (!CanMoveBlockRecursive(block, fromX, fromY, toX, toY, dx, dy, blocksToMove, new HashSet<Block>(), originalPositions))
         {
             return false;
         }
@@ -155,7 +223,7 @@ public class BlockGrid : MonoBehaviour
         return true;
     }
 
-    private bool CanMoveBlockRecursive(Block block, int fromX, int fromY, int toX, int toY, int dx, int dy, List<BlockMoveInfo> blocksToMove, HashSet<Block> processed)
+    private bool CanMoveBlockRecursive(Block block, int fromX, int fromY, int toX, int toY, int dx, int dy, List<BlockMoveInfo> blocksToMove, HashSet<Block> processed, Dictionary<Block, Vector2Int> originalPositions)
     {
         if (processed.Contains(block))
         {
@@ -168,6 +236,20 @@ public class BlockGrid : MonoBehaviour
         if (!IsValidPosition(toX, toY) || !IsValidPosition(toX + block.width - 1, toY + block.height - 1))
         {
             return false;
+        }
+
+        // Check if this block would move more than 1 cell from its original position
+        if (originalPositions.ContainsKey(block))
+        {
+            Vector2Int originalPos = originalPositions[block];
+            int moveDistanceX = Mathf.Abs(toX - originalPos.x);
+            int moveDistanceY = Mathf.Abs(toY - originalPos.y);
+
+            // Allow only 1 cell movement in either direction
+            if (moveDistanceX > 1 || moveDistanceY > 1)
+            {
+                return false;
+            }
         }
 
         // Find blocks that would be pushed
@@ -196,7 +278,7 @@ public class BlockGrid : MonoBehaviour
             int newX = blockingBlock.gridX + dx;
             int newY = blockingBlock.gridY + dy;
 
-            if (!CanMoveBlockRecursive(blockingBlock, blockingBlock.gridX, blockingBlock.gridY, newX, newY, dx, dy, blocksToMove, processed))
+            if (!CanMoveBlockRecursive(blockingBlock, blockingBlock.gridX, blockingBlock.gridY, newX, newY, dx, dy, blocksToMove, processed, originalPositions))
             {
                 return false;
             }
