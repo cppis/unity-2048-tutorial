@@ -1,0 +1,776 @@
+using UnityEngine;
+using UnityEngine.EventSystems;
+using System;
+using System.Collections;
+using System.Collections.Generic;
+
+public class Block : MonoBehaviour, IPointerDownHandler, IBeginDragHandler, IDragHandler, IEndDragHandler
+{
+    [Header("Block Properties")]
+    public Color blockColor = Color.white;
+    public int gridX;
+    public int gridY;
+    public int width = 1;
+    public int height = 1;
+
+    [Header("Visual")]
+    public SpriteRenderer spriteRenderer;
+    public SpriteRenderer selectionIndicator;
+
+    [Header("References")]
+    public BlockGrid grid;
+
+    private bool isSelected = false;
+    private Vector3 dragOffset;
+    private Vector3 originalPosition;
+    private int originalGridX;
+    private int originalGridY;
+    private int dragStartGridX;  // Current drag step starting position
+    private int dragStartGridY;
+    private int actualGridX;     // Actual position in grid data (unchanged during drag)
+    private int actualGridY;
+
+    // Track blocks being pushed during drag
+    private Dictionary<Block, Vector3> pushedBlocksOriginalPositions = new Dictionary<Block, Vector3>();
+    private Vector2Int lastTargetGrid;
+    private bool isDragging = false;
+
+    // Smooth movement
+    private Vector3 targetPosition;
+    private Vector3 velocity = Vector3.zero;
+
+    [Header("Animation Settings")]
+    [Tooltip("Smooth time for momentum animation (lower = snappier). Range: 0.03-0.15")]
+    [Range(0.01f, 0.2f)]
+    public float momentumSmoothTime = 0.08f;
+
+    [Tooltip("Smooth time for drag animation (lower = more responsive). Range: 0.01-0.05")]
+    [Range(0.005f, 0.1f)]
+    public float dragSmoothTime = 0.02f;
+
+    [Header("Drag Settings")]
+    [Tooltip("Enable free-form dragging (block follows cursor directly)")]
+    public bool freeFormDrag = true;
+
+    [Tooltip("Minimum drag distance in cells before block starts moving (grid mode only)")]
+    public float dragThreshold = 0.05f;
+
+    private Vector3 dragStartWorldPos;
+    private float dragStartTime;
+    private Vector3 lastDragPosition;
+    private bool isMovingWithMomentum = false;
+    private Vector2Int previewTargetGrid; // Preview grid position during free drag
+
+    [Header("Momentum Physics")]
+    [Tooltip("Deceleration rate in cells per second squared (higher = stops faster)")]
+    public float deceleration = 8f;
+
+    [Tooltip("Minimum velocity in cells per second to continue momentum")]
+    public float minVelocityThreshold = 0.8f;
+
+    [Tooltip("Velocity multiplier for drag speed (higher = more sensitive, travels further)")]
+    [Range(0.5f, 3f)]
+    public float velocityMultiplier = 1.5f;
+
+    // Event triggered when adjacent blocks with matching colors are found
+    public event Action<Block> OnAdjacentMatchFound;
+
+    private void Awake()
+    {
+        if (spriteRenderer == null)
+        {
+            spriteRenderer = GetComponent<SpriteRenderer>();
+        }
+
+        // Create selection indicator if not assigned
+        if (selectionIndicator == null && spriteRenderer != null)
+        {
+            GameObject indicatorObj = new GameObject("SelectionIndicator");
+            indicatorObj.transform.SetParent(transform);
+            indicatorObj.transform.localPosition = Vector3.zero;
+            indicatorObj.transform.localScale = Vector3.one * 1.1f;
+            selectionIndicator = indicatorObj.AddComponent<SpriteRenderer>();
+            selectionIndicator.sprite = spriteRenderer.sprite;
+            selectionIndicator.color = new Color(1, 1, 1, 0.3f);
+            selectionIndicator.sortingOrder = spriteRenderer.sortingOrder - 1;
+        }
+
+        SetSelected(false);
+
+        // Initialize target position
+        targetPosition = transform.position;
+    }
+
+    private void Update()
+    {
+        // Different movement logic for dragging vs momentum
+        if (isDragging)
+        {
+            if (freeFormDrag)
+            {
+                // FREE-FORM DRAG: Instant movement (already set in OnDrag)
+                // Use fast lerp for slight smoothing
+                if (Vector3.Distance(transform.position, targetPosition) > 0.001f)
+                {
+                    float t = 1f - Mathf.Exp(-Time.deltaTime / 0.01f); // Very fast
+                    transform.position = Vector3.Lerp(transform.position, targetPosition, t);
+                }
+                else
+                {
+                    transform.position = targetPosition;
+                }
+            }
+            else
+            {
+                // GRID-BASED DRAG: Exponential smoothing
+                if (Vector3.Distance(transform.position, targetPosition) > 0.001f)
+                {
+                    float t = 1f - Mathf.Exp(-Time.deltaTime / dragSmoothTime);
+                    transform.position = Vector3.Lerp(transform.position, targetPosition, t);
+                }
+                else
+                {
+                    transform.position = targetPosition;
+                }
+            }
+        }
+        else
+        {
+            // During momentum: use SmoothDamp for smooth deceleration
+            if (Vector3.Distance(transform.position, targetPosition) > 0.001f)
+            {
+                transform.position = Vector3.SmoothDamp(transform.position, targetPosition, ref velocity, momentumSmoothTime);
+            }
+            else
+            {
+                transform.position = targetPosition;
+                velocity = Vector3.zero;
+            }
+        }
+    }
+
+    /// <summary>
+    /// Initializes the block with position, color, and size
+    /// </summary>
+    public void Initialize(int x, int y, Color color, BlockGrid blockGrid, int w = 1, int h = 1)
+    {
+        gridX = x;
+        gridY = y;
+        blockColor = color;
+        grid = blockGrid;
+        width = w;
+        height = h;
+
+        if (spriteRenderer != null)
+        {
+            spriteRenderer.color = blockColor;
+        }
+
+        UpdatePosition(true); // Immediate positioning on initialization
+        UpdateScale();
+
+        // Initialize target position after setting initial position
+        targetPosition = transform.position;
+    }
+
+    private void UpdateScale()
+    {
+        if (grid != null)
+        {
+            // Calculate total size with spacing
+            float totalWidth = width * grid.cellSize + (width - 1) * grid.cellSpacing;
+            float totalHeight = height * grid.cellSize + (height - 1) * grid.cellSpacing;
+
+            // Make block 2 pixels smaller than cell size (in Unity units, assuming 100 pixels per unit)
+            float pixelSize = 0.02f; // 2 pixels at 100 PPU (pixels per unit)
+            float scaleX = totalWidth - pixelSize;
+            float scaleY = totalHeight - pixelSize;
+
+            transform.localScale = new Vector3(scaleX, scaleY, 1f);
+
+            // Update collider size
+            BoxCollider2D collider = GetComponent<BoxCollider2D>();
+            if (collider != null)
+            {
+                collider.size = Vector2.one;
+            }
+        }
+    }
+
+    /// <summary>
+    /// Updates the block's grid position and visual position
+    /// </summary>
+    public void SetGridPosition(int x, int y, bool immediate = false)
+    {
+        gridX = x;
+        gridY = y;
+        UpdatePosition(immediate);
+    }
+
+    private void UpdatePosition(bool immediate = false)
+    {
+        if (grid != null)
+        {
+            // Position at center of the block's occupied cells
+            Vector3 basePos = grid.GetWorldPosition(gridX, gridY);
+            float totalSize = grid.cellSize + grid.cellSpacing;
+            float offsetX = (width - 1) * totalSize * 0.5f;
+            float offsetY = (height - 1) * totalSize * 0.5f;
+            Vector3 newPosition = basePos + new Vector3(offsetX, offsetY, 0);
+
+            if (immediate)
+            {
+                transform.position = newPosition;
+                targetPosition = newPosition;
+                velocity = Vector3.zero;
+            }
+            else
+            {
+                targetPosition = newPosition;
+            }
+        }
+    }
+
+    /// <summary>
+    /// Sets the target position for smooth movement
+    /// </summary>
+    /// <param name="position">Target world position</param>
+    /// <param name="immediate">If true, sets position instantly without smoothing</param>
+    public void SetTargetPosition(Vector3 position, bool immediate = false)
+    {
+        targetPosition = position;
+        if (immediate)
+        {
+            transform.position = position;
+            velocity = Vector3.zero;
+        }
+    }
+
+    /// <summary>
+    /// Resets the smooth movement velocity for immediate response
+    /// </summary>
+    public void ResetVelocity()
+    {
+        velocity = Vector3.zero;
+    }
+
+    public void SetSelected(bool selected)
+    {
+        isSelected = selected;
+        if (selectionIndicator != null)
+        {
+            selectionIndicator.gameObject.SetActive(selected);
+        }
+    }
+
+    public void OnPointerDown(PointerEventData eventData)
+    {
+        // Prevent interaction during momentum movement
+        if (isMovingWithMomentum)
+        {
+            return;
+        }
+
+        if (grid != null)
+        {
+            grid.SelectBlock(this);
+        }
+        SetSelected(true);
+        originalPosition = transform.position;
+        originalGridX = gridX;
+        originalGridY = gridY;
+        dragStartGridX = gridX;
+        dragStartGridY = gridY;
+        actualGridX = gridX;  // Real position in grid data
+        actualGridY = gridY;
+    }
+
+    public void OnBeginDrag(PointerEventData eventData)
+    {
+        if (grid == null)
+        {
+            Debug.LogWarning("Grid is null in OnBeginDrag");
+            return;
+        }
+
+        Vector3 worldPos = Camera.main.ScreenToWorldPoint(eventData.position);
+        worldPos.z = 0;
+        dragOffset = transform.position - worldPos;
+
+        // Save drag start position for threshold calculation
+        dragStartWorldPos = worldPos;
+        lastDragPosition = worldPos;
+        dragStartTime = Time.time;
+
+        // Clear any previously tracked blocks
+        pushedBlocksOriginalPositions.Clear();
+
+        // Initialize drag state
+        lastTargetGrid = new Vector2Int(gridX, gridY);
+        isDragging = true;
+
+        // Note: velocity is only used for momentum, not for drag (we use Lerp during drag)
+    }
+
+    public void OnDrag(PointerEventData eventData)
+    {
+        if (grid == null) return;
+
+        Vector3 worldPos = Camera.main.ScreenToWorldPoint(eventData.position);
+        worldPos.z = 0;
+        lastDragPosition = worldPos;
+
+        if (freeFormDrag)
+        {
+            // FREE-FORM DRAG: Block follows cursor directly
+            HandleFreeFormDrag(worldPos);
+        }
+        else
+        {
+            // GRID-BASED DRAG: Original behavior
+            HandleGridBasedDrag(worldPos);
+        }
+    }
+
+    /// <summary>
+    /// Free-form drag: block follows cursor position directly without grid constraints
+    /// </summary>
+    private void HandleFreeFormDrag(Vector3 worldPos)
+    {
+        float totalSize = grid.cellSize + grid.cellSpacing;
+
+        // Move block to cursor position (with offset to maintain grab point)
+        Vector3 targetWorldPos = worldPos + dragOffset;
+        targetPosition = targetWorldPos;
+
+        // Find nearest grid position for visual feedback
+        previewTargetGrid = GetNearestGridPosition(targetWorldPos);
+
+        // Check if the nearest grid position is valid
+        bool isValidPlacement = IsValidGridPlacement(previewTargetGrid);
+
+        // Visual feedback
+        if (spriteRenderer != null)
+        {
+            if (isValidPlacement)
+            {
+                spriteRenderer.color = blockColor; // Valid - full color
+            }
+            else
+            {
+                spriteRenderer.color = blockColor * 0.6f; // Invalid - dimmed
+            }
+        }
+    }
+
+    /// <summary>
+    /// Grid-based drag: original behavior with grid snapping
+    /// </summary>
+    private void HandleGridBasedDrag(Vector3 worldPos)
+    {
+        // Calculate drag distance from start position
+        Vector3 dragDelta = worldPos - dragStartWorldPos;
+        float totalSize = grid.cellSize + grid.cellSpacing;
+
+        // Normalize drag distance to cell units
+        float dragDistanceX = dragDelta.x / totalSize;
+        float dragDistanceY = dragDelta.y / totalSize;
+
+        // Calculate target position based on accumulated drag distance
+        Vector2Int targetGrid = new Vector2Int(actualGridX, actualGridY);
+
+        if (Mathf.Abs(dragDistanceX) > Mathf.Abs(dragDistanceY))
+        {
+            // Horizontal movement is dominant
+            if (Mathf.Abs(dragDistanceX) >= dragThreshold)
+            {
+                int steps = Mathf.RoundToInt(dragDistanceX);
+                targetGrid = new Vector2Int(actualGridX + steps, actualGridY);
+            }
+        }
+        else
+        {
+            // Vertical movement is dominant
+            if (Mathf.Abs(dragDistanceY) >= dragThreshold)
+            {
+                int steps = Mathf.RoundToInt(dragDistanceY);
+                targetGrid = new Vector2Int(actualGridX, actualGridY + steps);
+            }
+        }
+
+        // Skip update if target hasn't changed
+        if (isDragging && targetGrid.x == lastTargetGrid.x && targetGrid.y == lastTargetGrid.y)
+        {
+            return;
+        }
+
+        // Reset any previously pushed blocks
+        foreach (var kvp in pushedBlocksOriginalPositions)
+        {
+            if (kvp.Key != null)
+            {
+                kvp.Key.SetTargetPosition(kvp.Value);
+            }
+        }
+        pushedBlocksOriginalPositions.Clear();
+
+        // Get all blocks that would be pushed
+        List<BlockGrid.BlockMoveInfo> blocksToMove = grid.GetBlocksToPushVisual(this, actualGridX, actualGridY, targetGrid.x, targetGrid.y);
+
+        if (blocksToMove != null && blocksToMove.Count > 0)
+        {
+            // Move all blocks visually
+            foreach (var moveInfo in blocksToMove)
+            {
+                if (moveInfo.block != this)
+                {
+                    if (!pushedBlocksOriginalPositions.ContainsKey(moveInfo.block))
+                    {
+                        pushedBlocksOriginalPositions[moveInfo.block] = moveInfo.block.targetPosition;
+                    }
+                }
+
+                Vector3 targetWorldPos = grid.GetWorldPosition(moveInfo.toX, moveInfo.toY);
+                float blockOffsetX = (moveInfo.block.width - 1) * totalSize * 0.5f;
+                float blockOffsetY = (moveInfo.block.height - 1) * totalSize * 0.5f;
+                targetWorldPos += new Vector3(blockOffsetX, blockOffsetY, 0);
+
+                moveInfo.block.SetTargetPosition(targetWorldPos);
+            }
+
+            lastTargetGrid = targetGrid;
+            originalGridX = targetGrid.x;
+            originalGridY = targetGrid.y;
+
+            if (spriteRenderer != null)
+            {
+                spriteRenderer.color = blockColor;
+            }
+        }
+        else
+        {
+            if (spriteRenderer != null)
+            {
+                spriteRenderer.color = blockColor * 0.5f;
+            }
+            lastTargetGrid = targetGrid;
+        }
+    }
+
+    public void OnEndDrag(PointerEventData eventData)
+    {
+        if (grid == null)
+        {
+            Debug.LogWarning("Grid is null in OnEndDrag");
+            return;
+        }
+
+        // End drag state
+        isDragging = false;
+
+        if (spriteRenderer != null)
+        {
+            spriteRenderer.color = blockColor;
+        }
+
+        if (freeFormDrag)
+        {
+            // FREE-FORM MODE: Snap to nearest valid grid position
+            HandleFreeFormDragEnd();
+        }
+        else
+        {
+            // GRID-BASED MODE: Original momentum behavior
+            HandleGridBasedDragEnd();
+        }
+
+        SetSelected(false);
+    }
+
+    /// <summary>
+    /// Handles drag end in free-form mode: snaps to nearest valid grid
+    /// </summary>
+    private void HandleFreeFormDragEnd()
+    {
+        // Find the nearest valid grid position
+        Vector2Int targetGrid = FindNearestValidGrid();
+
+        // Check if we moved to a different position
+        if (targetGrid.x != actualGridX || targetGrid.y != actualGridY)
+        {
+            // Valid new position - move the block
+            float totalSize = grid.cellSize + grid.cellSpacing;
+
+            // Update grid data
+            grid.MoveBlock(this, actualGridX, actualGridY, targetGrid.x, targetGrid.y);
+
+            // Update our position
+            actualGridX = targetGrid.x;
+            actualGridY = targetGrid.y;
+            gridX = targetGrid.x;
+            gridY = targetGrid.y;
+
+            // Snap to grid position with smooth animation
+            SetGridPosition(targetGrid.x, targetGrid.y, false);
+
+            // Check for matches
+            grid.CheckAdjacentBlocks(this);
+        }
+        else
+        {
+            // Return to original position
+            ReturnToOriginalPosition();
+        }
+    }
+
+    /// <summary>
+    /// Handles drag end in grid-based mode: applies momentum
+    /// </summary>
+    private void HandleGridBasedDragEnd()
+    {
+        // Restore all pushed blocks to their original positions
+        foreach (var kvp in pushedBlocksOriginalPositions)
+        {
+            if (kvp.Key != null)
+            {
+                kvp.Key.SetTargetPosition(kvp.Value);
+            }
+        }
+        pushedBlocksOriginalPositions.Clear();
+
+        // Calculate drag velocity and distance
+        float dragTime = Time.time - dragStartTime;
+        Vector3 dragDistance = lastDragPosition - dragStartWorldPos;
+        float totalSize = grid.cellSize + grid.cellSpacing;
+
+        // Calculate drag distance in cell units
+        float dragDistanceInCells = dragDistance.magnitude / totalSize;
+
+        // Only apply momentum if drag time is sufficient and distance is meaningful
+        if (dragTime > 0.01f && dragDistanceInCells > dragThreshold)
+        {
+            // Calculate velocity in world units per second
+            Vector3 dragVelocity = dragDistance / dragTime;
+
+            // Convert to cell units per second
+            float velocityX = dragVelocity.x / totalSize;
+            float velocityY = dragVelocity.y / totalSize;
+
+            // Determine primary direction based on which component is larger
+            float absVelocityX = Mathf.Abs(velocityX);
+            float absVelocityY = Mathf.Abs(velocityY);
+
+            // Start momentum movement in the dominant direction
+            if (absVelocityX > absVelocityY && absVelocityX > minVelocityThreshold)
+            {
+                // Horizontal movement
+                int direction = velocityX > 0 ? 1 : -1;
+                StartCoroutine(MoveWithMomentum(direction, 0, absVelocityX));
+            }
+            else if (absVelocityY > minVelocityThreshold)
+            {
+                // Vertical movement
+                int direction = velocityY > 0 ? 1 : -1;
+                StartCoroutine(MoveWithMomentum(0, direction, absVelocityY));
+            }
+            else
+            {
+                // Velocity too low, return to original position
+                ReturnToOriginalPosition();
+            }
+        }
+        else
+        {
+            // Drag time or distance too small, return to original position
+            ReturnToOriginalPosition();
+        }
+    }
+
+    private void ReturnToOriginalPosition()
+    {
+        targetPosition = originalPosition;
+        gridX = actualGridX;
+        gridY = actualGridY;
+        originalGridX = actualGridX;
+        originalGridY = actualGridY;
+        dragStartGridX = actualGridX;
+        dragStartGridY = actualGridY;
+    }
+
+    /// <summary>
+    /// Handles block movement with physics-based momentum after drag release
+    /// Uses velocity to calculate maximum travel distance and deceleration
+    /// </summary>
+    private IEnumerator MoveWithMomentum(int dx, int dy, float initialVelocity)
+    {
+        isMovingWithMomentum = true;
+
+        // Apply velocity multiplier for better responsiveness
+        float adjustedVelocity = initialVelocity * velocityMultiplier;
+
+        // Calculate maximum distance using physics formula: distance = (v^2 - u^2) / (2a)
+        // Where v = minVelocityThreshold, u = adjustedVelocity, a = -deceleration
+        float velocitySquared = adjustedVelocity * adjustedVelocity;
+        float thresholdSquared = minVelocityThreshold * minVelocityThreshold;
+        float maxDistance = (velocitySquared - thresholdSquared) / (2f * deceleration);
+
+        // Convert distance to number of cells (round up to ensure at least 1 cell if velocity is high enough)
+        int maxCells = Mathf.FloorToInt(maxDistance);
+        maxCells = Mathf.Max(1, maxCells); // At least 1 cell if we got here
+
+        float currentVelocity = adjustedVelocity;
+        float totalSize = grid.cellSize + grid.cellSpacing;
+        int cellsMoved = 0;
+
+        // Reset SmoothDamp velocity for clean start
+        velocity = Vector3.zero;
+
+        // Move cell by cell with physics-based deceleration
+        while (cellsMoved < maxCells && currentVelocity > minVelocityThreshold && !isDragging)
+        {
+            // Calculate next target position
+            int targetX = actualGridX + dx;
+            int targetY = actualGridY + dy;
+
+            // Check if move is valid using the safe method
+            bool canMove = grid.TryMoveBlockWithPushingPublic(this, actualGridX, actualGridY, targetX, targetY);
+
+            if (!canMove)
+            {
+                // Cannot move, stop immediately and snap to current position
+                break;
+            }
+
+            // Move was successful - update our tracking variables
+            actualGridX = targetX;
+            actualGridY = targetY;
+            cellsMoved++;
+
+            // Calculate time for this cell movement based on current velocity
+            // time = distance / average_velocity
+            float avgVelocityForCell = currentVelocity - (deceleration / 2f) * (1f / currentVelocity);
+            float timeForCell = 1f / Mathf.Max(avgVelocityForCell, minVelocityThreshold);
+
+            // Clamp wait time for better feel
+            float waitTime = Mathf.Clamp(timeForCell, 0.02f, 0.2f);
+            yield return new WaitForSeconds(waitTime);
+
+            // Apply physics-based deceleration: v = u - at
+            // Approximate time for one cell movement
+            float deltaTime = 1f / currentVelocity;
+            currentVelocity -= deceleration * deltaTime;
+
+            // Ensure velocity doesn't go negative
+            currentVelocity = Mathf.Max(currentVelocity, 0);
+
+            // Check if velocity dropped below threshold
+            if (currentVelocity <= minVelocityThreshold)
+            {
+                break;
+            }
+        }
+
+        // Ensure final position matches grid
+        Vector3 finalWorldPos = grid.GetWorldPosition(gridX, gridY);
+        float blockOffsetX = (width - 1) * totalSize * 0.5f;
+        float blockOffsetY = (height - 1) * totalSize * 0.5f;
+        finalWorldPos += new Vector3(blockOffsetX, blockOffsetY, 0);
+        transform.position = finalWorldPos;
+        targetPosition = finalWorldPos;
+        velocity = Vector3.zero;
+
+        // Check for matches after all movements
+        grid.CheckAdjacentBlocks(this);
+
+        isMovingWithMomentum = false;
+    }
+
+    public void TriggerAdjacentMatch()
+    {
+        OnAdjacentMatchFound?.Invoke(this);
+    }
+
+    /// <summary>
+    /// Gets the nearest grid position from a world position
+    /// </summary>
+    private Vector2Int GetNearestGridPosition(Vector3 worldPos)
+    {
+        if (grid == null) return Vector2Int.zero;
+
+        // Convert world position to local grid space
+        Vector3 localPos = grid.transform.InverseTransformPoint(worldPos);
+        float totalSize = grid.cellSize + grid.cellSpacing;
+
+        // Calculate grid coordinates (rounding to nearest)
+        int gridX = Mathf.RoundToInt(localPos.x / totalSize);
+        int gridY = Mathf.RoundToInt(localPos.y / totalSize);
+
+        // Clamp to grid bounds
+        gridX = Mathf.Clamp(gridX, 0, grid.width - width);
+        gridY = Mathf.Clamp(gridY, 0, grid.height - height);
+
+        return new Vector2Int(gridX, gridY);
+    }
+
+    /// <summary>
+    /// Checks if the block can be placed at the given grid position
+    /// </summary>
+    private bool IsValidGridPlacement(Vector2Int gridPos)
+    {
+        if (grid == null) return false;
+
+        // Check if position is within bounds
+        if (gridPos.x < 0 || gridPos.y < 0 ||
+            gridPos.x + width > grid.width ||
+            gridPos.y + height > grid.height)
+        {
+            return false;
+        }
+
+        // Check if we can place the block here (ignoring current position)
+        return grid.CanPlaceBlock(gridPos.x, gridPos.y, width, height, this);
+    }
+
+    /// <summary>
+    /// Finds the nearest valid grid position from current world position
+    /// </summary>
+    private Vector2Int FindNearestValidGrid()
+    {
+        if (grid == null) return new Vector2Int(actualGridX, actualGridY);
+
+        Vector2Int nearestGrid = GetNearestGridPosition(transform.position);
+
+        // If nearest position is valid, use it
+        if (IsValidGridPlacement(nearestGrid))
+        {
+            return nearestGrid;
+        }
+
+        // Otherwise, search in expanding rings
+        int maxSearchRadius = Mathf.Max(grid.width, grid.height);
+
+        for (int radius = 1; radius <= maxSearchRadius; radius++)
+        {
+            // Check positions in a ring around the nearest grid
+            for (int dx = -radius; dx <= radius; dx++)
+            {
+                for (int dy = -radius; dy <= radius; dy++)
+                {
+                    // Only check the perimeter of the ring
+                    if (Mathf.Abs(dx) != radius && Mathf.Abs(dy) != radius)
+                        continue;
+
+                    Vector2Int testPos = new Vector2Int(nearestGrid.x + dx, nearestGrid.y + dy);
+
+                    if (IsValidGridPlacement(testPos))
+                    {
+                        return testPos;
+                    }
+                }
+            }
+        }
+
+        // No valid position found - return original position
+        return new Vector2Int(actualGridX, actualGridY);
+    }
+}

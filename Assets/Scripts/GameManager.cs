@@ -32,32 +32,52 @@ public class GameManager : MonoBehaviour
 
     private void Start()
     {
-        NewGame();
+        // Only start new game if board is assigned (i.e., in 2048 game scene)
+        if (board != null)
+        {
+            NewGame();
+        }
     }
 
     public void NewGame()
     {
         // reset score
         SetScore(0);
-        hiscoreText.text = LoadHiscore().ToString();
+
+        if (hiscoreText != null)
+        {
+            hiscoreText.text = LoadHiscore().ToString();
+        }
 
         // hide game over screen
-        gameOver.alpha = 0f;
-        gameOver.interactable = false;
+        if (gameOver != null)
+        {
+            gameOver.alpha = 0f;
+            gameOver.interactable = false;
+        }
 
         // update board state
-        board.ClearBoard();
-        board.CreateTile();
-        board.CreateTile();
-        board.enabled = true;
+        if (board != null)
+        {
+            board.ClearBoard();
+            board.CreateTile();
+            board.CreateTile();
+            board.enabled = true;
+        }
     }
 
     public void GameOver()
     {
-        board.enabled = false;
-        gameOver.interactable = true;
+        if (board != null)
+        {
+            board.enabled = false;
+        }
 
-        StartCoroutine(Fade(gameOver, 1f, 1f));
+        if (gameOver != null)
+        {
+            gameOver.interactable = true;
+            StartCoroutine(Fade(gameOver, 1f, 1f));
+        }
     }
 
     private IEnumerator Fade(CanvasGroup canvasGroup, float to, float delay = 0f)
@@ -86,7 +106,11 @@ public class GameManager : MonoBehaviour
     private void SetScore(int score)
     {
         this.score = score;
-        scoreText.text = score.ToString();
+
+        if (scoreText != null)
+        {
+            scoreText.text = score.ToString();
+        }
 
         SaveHiscore();
     }

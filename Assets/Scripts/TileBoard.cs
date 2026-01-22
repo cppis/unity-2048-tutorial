@@ -19,6 +19,9 @@ public class TileBoard : MonoBehaviour
 
     public void ClearBoard()
     {
+        if (grid == null)
+            return;
+
         foreach (var cell in grid.cells) {
             cell.tile = null;
         }
@@ -32,6 +35,9 @@ public class TileBoard : MonoBehaviour
 
     public void CreateTile()
     {
+        if (grid == null)
+            return;
+
         Tile tile = Instantiate(tilePrefab, grid.transform);
         tile.SetState(tileStates[0]);
         tile.Spawn(grid.GetRandomEmptyCell());

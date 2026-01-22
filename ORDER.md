@@ -39,134 +39,134 @@ Assets/
 
 ## 3단계: 그리드 시스템 개발 (하위 → 상위)
 
-### 3.1 TileCell.cs 작성
+### 3.1 TileCell.cs 작성  
 **위치**: Assets/Scripts/TileCell.cs  
 **의존성**: Tile (순환 참조)  
 **설명**: 그리드의 개별 셀을 나타내는 컴포넌트  
 
-**핵심 구현 사항**:
-- `coordinates` (Vector2Int): 셀의 좌표
-- `tile` (Tile): 현재 셀을 차지하는 타일 참조
-- `Empty`, `Occupied` 프로퍼티: 셀 상태 확인
+**핵심 구현 사항**:  
+- `coordinates` (Vector2Int): 셀의 좌표  
+- `tile` (Tile): 현재 셀을 차지하는 타일 참조  
+- `Empty`, `Occupied` 프로퍼티: 셀 상태 확인  
 
-**이유**: 그리드의 최소 단위이므로 Row와 Grid보다 먼저 작성해야 합니다.
+**이유**: 그리드의 최소 단위이므로 Row와 Grid보다 먼저 작성해야 합니다.  
 
-### 3.2 TileRow.cs 작성
-**위치**: Assets/Scripts/TileRow.cs
-**의존성**: TileCell
-**설명**: 셀들의 가로 행을 묶는 컨테이너
+### 3.2 TileRow.cs 작성  
+**위치**: Assets/Scripts/TileRow.cs  
+**의존성**: TileCell  
+**설명**: 셀들의 가로 행을 묶는 컨테이너  
 
 **핵심 구현 사항**:
 - `Awake()`에서 자식 TileCell들을 `GetComponentsInChildren`으로 수집
-- `cells` 배열로 행의 모든 셀 관리
+- `cells` 배열로 행의 모든 셀 관리  
 
-**이유**: TileCell을 사용하므로 TileCell 이후에 작성합니다.
+**이유**: TileCell을 사용하므로 TileCell 이후에 작성합니다.  
 
-### 3.3 TileGrid.cs 작성
-**위치**: Assets/Scripts/TileGrid.cs
-**의존성**: TileRow, TileCell
-**설명**: 전체 그리드를 관리하는 최상위 컨테이너
+### 3.3 TileGrid.cs 작성  
+**위치**: Assets/Scripts/TileGrid.cs  
+**의존성**: TileRow, TileCell  
+**설명**: 전체 그리드를 관리하는 최상위 컨테이너  
 
-**핵심 구현 사항**:
-- `Awake()`에서 모든 rows와 cells 초기화
-- 각 셀의 좌표를 계산하여 설정 (`i % Width`, `i / Width`)
-- `GetCell(x, y)`: 좌표로 셀 가져오기
-- `GetAdjacentCell()`: 방향으로 인접 셀 가져오기 (Y축 반전 주의!)
-- `GetRandomEmptyCell()`: 빈 셀 무작위 선택
+**핵심 구현 사항**:  
+- `Awake()`에서 모든 rows와 cells 초기화  
+- 각 셀의 좌표를 계산하여 설정 (`i % Width`, `i / Width`)  
+- `GetCell(x, y)`: 좌표로 셀 가져오기  
+- `GetAdjacentCell()`: 방향으로 인접 셀 가져오기 (Y축 반전 주의!)  
+- `GetRandomEmptyCell()`: 빈 셀 무작위 선택  
 
-**주의사항**:
-- Unity UI 좌표계에 맞춰 `GetAdjacentCell`에서 Y축을 반전 (`coordinates.y -= direction.y`)
+[**주의사항**](./ORDER.TileGrid.md):  
+- Unity UI 좌표계에 맞춰 `GetAdjacentCell`에서 Y축을 반전 (`coordinates.y -= direction.y`)  
 
-**이유**: 그리드 시스템의 최상위 관리자로, TileRow와 TileCell을 모두 사용합니다.
+**이유**: 그리드 시스템의 최상위 관리자로, TileRow와 TileCell을 모두 사용합니다.  
 
-## 4단계: 타일 시스템 개발
+## 4단계: 타일 시스템 개발  
 
-### 4.1 Tile.cs 작성
-**위치**: Assets/Scripts/Tile.cs
-**의존성**: TileState, TileCell, TextMesh Pro
-**설명**: 시각적 타일 GameObject와 애니메이션 관리
-
-**핵심 구현 사항**:
-- `state` (TileState): 타일의 현재 상태
-- `cell` (TileCell): 타일이 위치한 셀
-- `locked` (bool): 한 턴에 중복 병합 방지 플래그
-- `SetState()`: 타일 상태 설정 및 시각 업데이트
-- `Spawn()`: 셀에 즉시 생성
-- `MoveTo()`: 셀로 이동 (애니메이션)
-- `Merge()`: 다른 타일과 병합 (애니메이션 후 파괴)
-- `Animate()`: 코루틴을 사용한 부드러운 이동 (0.1초 Lerp)
-
-**이유**: TileState와 TileCell을 사용하므로 이들 이후에 작성합니다.
-
-## 5단계: 게임 로직 개발
-
-### 5.1 TileBoard.cs 작성
-**위치**: Assets/Scripts/TileBoard.cs
-**의존성**: Tile, TileGrid, TileState, GameManager
-**설명**: 핵심 게임플레이 로직과 입력 처리
+### 4.1 Tile.cs 작성  
+**위치**: Assets/Scripts/Tile.cs  
+**의존성**: TileState, TileCell, TextMesh Pro  
+**설명**: 시각적 타일 GameObject와 애니메이션 관리  
 
 **핵심 구현 사항**:
-- `tilePrefab` (Tile): 타일 프리팹 참조
-- `tileStates` (TileState[]): 모든 타일 상태 배열
-- `waiting` (bool): 애니메이션 중 입력 차단 플래그
-- `tiles` (List<Tile>): 현재 보드의 모든 타일
-- `Update()`: WASD/방향키 입력 처리
-- `Move()`: 방향별 이동 로직 (올바른 순서로 셀 반복)
-- `MoveTile()`: 개별 타일 이동 처리
-- `CanMerge()`: 두 타일 병합 가능 여부 확인
-- `MergeTiles()`: 타일 병합 및 점수 증가
-- `WaitForChanges()`: 애니메이션 대기 후 새 타일 생성
-- `CheckForGameOver()`: 게임 오버 조건 확인
+- `state` (TileState): 타일의 현재 상태  
+- `cell` (TileCell): 타일이 위치한 셀  
+- `locked` (bool): 한 턴에 중복 병합 방지 플래그  
+- `SetState()`: 타일 상태 설정 및 시각 업데이트  
+- `Spawn()`: 셀에 즉시 생성  
+- `MoveTo()`: 셀로 이동 (애니메이션)  
+- `Merge()`: 다른 타일과 병합 (애니메이션 후 파괴)  
+- `Animate()`: 코루틴을 사용한 부드러운 이동 (0.1초 Lerp)  
 
-**주요 로직**:
-1. 입력 방향에 따라 올바른 순서로 셀 순회 (예: 위로 이동 시 위쪽부터)
-2. 각 타일을 방향으로 이동 가능한 최대 거리까지 이동
-3. 같은 숫자 타일 만나면 병합 (locked 플래그로 중복 방지)
-4. 모든 이동 완료 후 0.1초 대기
-5. 새 타일 생성 (보드가 가득 차지 않은 경우)
-6. 게임 오버 확인 (보드 가득 + 병합 불가능)
+**이유**: TileState와 TileCell을 사용하므로 이들 이후에 작성합니다.  
 
-**이유**: 게임의 핵심 로직으로, Tile, TileGrid, GameManager를 모두 사용합니다.
+## 5단계: 게임 로직 개발  
 
-### 5.2 GameManager.cs 작성
-**위치**: Assets/Scripts/GameManager.cs
-**의존성**: TileBoard, TextMesh Pro
-**설명**: 게임 전체 상태 관리 (싱글톤 패턴)
+### 5.1 TileBoard.cs 작성  
+**위치**: Assets/Scripts/TileBoard.cs  
+**의존성**: Tile, TileGrid, TileState, GameManager  
+**설명**: 핵심 게임플레이 로직과 입력 처리  
 
-**핵심 구현 사항**:
-- `[DefaultExecutionOrder(-1)]`: 다른 스크립트보다 먼저 초기화
-- 싱글톤 패턴 구현 (Instance)
-- `board` (TileBoard): 게임 보드 참조
-- `score`: 현재 점수
-- `scoreText`, `hiscoreText`: UI 텍스트 참조
-- `gameOver` (CanvasGroup): 게임 오버 UI
-- `NewGame()`: 게임 초기화 (점수 리셋, 보드 클리어, 타일 2개 생성)
-- `GameOver()`: 게임 오버 처리 (보드 비활성화, UI 페이드인)
-- `IncreaseScore()`: 점수 증가 및 최고 점수 저장 (PlayerPrefs)
-- `Fade()`: 코루틴으로 UI 페이드 애니메이션
+**핵심 구현 사항**:  
+- `tilePrefab` (Tile): 타일 프리팹 참조  
+- `tileStates` (TileState[]): 모든 타일 상태 배열  
+- `waiting` (bool): 애니메이션 중 입력 차단 플래그  
+- `tiles` (List<Tile>): 현재 보드의 모든 타일  
+- `Update()`: WASD/방향키 입력 처리  
+- `Move()`: 방향별 이동 로직 (올바른 순서로 셀 반복)  
+- `MoveTile()`: 개별 타일 이동 처리  
+- `CanMerge()`: 두 타일 병합 가능 여부 확인  
+- `MergeTiles()`: 타일 병합 및 점수 증가  
+- `WaitForChanges()`: 애니메이션 대기 후 새 타일 생성  
+- `CheckForGameOver()`: 게임 오버 조건 확인  
 
-**이유**: TileBoard를 사용하므로 TileBoard 이후에 작성하거나, 동시에 작성하면서 서로 참조하도록 구현합니다.
+**주요 로직**:  
+1. 입력 방향에 따라 올바른 순서로 셀 순회 (예: 위로 이동 시 위쪽부터)  
+2. 각 타일을 방향으로 이동 가능한 최대 거리까지 이동  
+3. 같은 숫자 타일 만나면 병합 (locked 플래그로 중복 방지)  
+4. 모든 이동 완료 후 0.1초 대기  
+5. 새 타일 생성 (보드가 가득 차지 않은 경우)  
+6. 게임 오버 확인 (보드 가득 + 병합 불가능)  
 
-## 6단계: Unity 에디터 작업
+**이유**: 게임의 핵심 로직으로, Tile, TileGrid, GameManager를 모두 사용합니다.  
 
-### 6.1 TileState 에셋 생성
-**위치**: Assets/Tiles/
-**개수**: 17개 (2, 4, 8, 16, 32, ..., 131072)
+### 5.2 GameManager.cs 작성  
+**위치**: Assets/Scripts/GameManager.cs  
+**의존성**: TileBoard, TextMesh Pro  
+**설명**: 게임 전체 상태 관리 (싱글톤 패턴)  
 
-**작업 순서**:
-1. Assets/Tiles 폴더 생성
-2. 우클릭 > Create > Tile State
-3. 각 타일 번호별로 에셋 생성
-4. Inspector에서 number, backgroundColor, textColor 설정
+**핵심 구현 사항**:  
+- `[DefaultExecutionOrder(-1)]`: 다른 스크립트보다 먼저 초기화  
+- 싱글톤 패턴 구현 (Instance)  
+- `board` (TileBoard): 게임 보드 참조  
+- `score`: 현재 점수  
+- `scoreText`, `hiscoreText`: UI 텍스트 참조  
+- `gameOver` (CanvasGroup): 게임 오버 UI  
+- `NewGame()`: 게임 초기화 (점수 리셋, 보드 클리어, 타일 2개 생성)  
+- `GameOver()`: 게임 오버 처리 (보드 비활성화, UI 페이드인)  
+- `IncreaseScore()`: 점수 증가 및 최고 점수 저장 (PlayerPrefs)  
+- `Fade()`: 코루틴으로 UI 페이드 애니메이션  
 
-**색상 가이드** (원작 2048 참고):
-- 2, 4: 밝은 색상
-- 8~64: 주황색 계열
-- 128~2048: 노란색/금색 계열
-- 4096 이상: 진한 색상
+**이유**: TileBoard를 사용하므로 TileBoard 이후에 작성하거나, 동시에 작성하면서 서로 참조하도록 구현합니다.  
 
-### 6.2 기본 씬 구조 설계
-**위치**: Assets/Scenes/2048.unity
+## 6단계: Unity 에디터 작업  
+
+### 6.1 TileState 에셋 생성  
+**위치**: Assets/Tiles/  
+**개수**: 17개 (2, 4, 8, 16, 32, ..., 131072)  
+
+**작업 순서**:  
+1. Assets/Tiles 폴더 생성  
+2. 우클릭 > Create > Tile State  
+3. 각 타일 번호별로 에셋 생성  
+4. Inspector에서 number, backgroundColor, textColor 설정  
+
+**색상 가이드** (원작 2048 참고):  
+- 2, 4: 밝은 색상  
+- 8~64: 주황색 계열  
+- 128~2048: 노란색/금색 계열  
+- 4096 이상: 진한 색상  
+
+### 6.2 기본 씬 구조 설계  
+**위치**: Assets/Scenes/2048.unity  
 
 **씬 계층 구조**:
 ```
@@ -195,14 +195,14 @@ Canvas
     └── New Game Button
 ```
 
-**작업 순서**:
-1. Canvas 생성 (UI > Canvas)
-2. Grid Layout Group을 사용하여 4x4 그리드 구조 생성
-3. 각 오브젝트에 적절한 컴포넌트 추가
-4. Layout 설정 (Grid Layout: Cell Size, Spacing 등)
+**작업 순서**:  
+1. Canvas 생성 (UI > Canvas)  
+2. Grid Layout Group을 사용하여 4x4 그리드 구조 생성  
+3. 각 오브젝트에 적절한 컴포넌트 추가  
+4. Layout 설정 (Grid Layout: Cell Size, Spacing 등)  
 
-### 6.3 타일 프리팹 생성
-**위치**: Assets/Prefabs/Tile.prefab
+### 6.3 타일 프리팹 생성  
+**위치**: Assets/Prefabs/Tile.prefab  
 
 **구조**:
 ```
@@ -211,19 +211,19 @@ Tile (Image 컴포넌트 + Tile 스크립트)
 ```
 
 **작업 순서**:
-1. Hierarchy에서 UI > Image 생성
-2. Tile 스크립트 추가
-3. 자식으로 TextMeshProUGUI 추가
-4. Layout 설정 (크기, 폰트 등)
-5. Prefabs 폴더로 드래그하여 프리팹 생성
+1. Hierarchy에서 UI > Image 생성  
+2. Tile 스크립트 추가  
+3. 자식으로 TextMeshProUGUI 추가  
+4. Layout 설정 (크기, 폰트 등)  
+5. Prefabs 폴더로 드래그하여 프리팹 생성  
 
-### 6.4 씬 연결 및 설정
+### 6.4 씬 연결 및 설정  
 
-**GameManager 설정**:
-- Board: TileBoard 오브젝트 드래그
-- Game Over: Game Over CanvasGroup 드래그
-- Score Text: Score Text 드래그
-- Hiscore Text: Hiscore Text 드래그
+**GameManager 설정**:  
+- Board: TileBoard 오브젝트 드래그  
+- Game Over: Game Over CanvasGroup 드래그  
+- Score Text: Score Text 드래그  
+- Hiscore Text: Hiscore Text 드래그  
 
 **TileBoard 설정**:
 - Tile Prefab: Tile 프리팹 드래그
