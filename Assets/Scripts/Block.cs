@@ -251,13 +251,34 @@ public class Block : MonoBehaviour, IPointerDownHandler, IBeginDragHandler, IDra
         // Check if we moved to a different grid cell
         if (currentDragGrid.x != lastDragGrid.x || currentDragGrid.y != lastDragGrid.y)
         {
-            // Limit to one cell movement from original position
-            int moveDistance = isDraggingHorizontal
-                ? Mathf.Abs(currentDragGrid.x - originalGridX)
-                : Mathf.Abs(currentDragGrid.y - originalGridY);
+            bool allowMove = false;
 
-            // Only allow movement if we haven't exceeded one cell from original position
-            if (moveDistance <= 1)
+            // Check movement restrictions based on move mode
+            if (grid.moveMode == BlockMoveMode.FreeDrag)
+            {
+                // FreeDrag: no restrictions
+                allowMove = true;
+            }
+            else if (grid.moveMode == BlockMoveMode.OneCell)
+            {
+                // OneCell: limit to one cell movement from original position
+                int moveDistance = isDraggingHorizontal
+                    ? Mathf.Abs(currentDragGrid.x - originalGridX)
+                    : Mathf.Abs(currentDragGrid.y - originalGridY);
+
+                allowMove = moveDistance <= 1;
+            }
+            else if (grid.moveMode == BlockMoveMode.SlideToEnd)
+            {
+                // SlideToEnd: allow one cell during drag (actual slide happens on OnEndDrag)
+                int moveDistance = isDraggingHorizontal
+                    ? Mathf.Abs(currentDragGrid.x - originalGridX)
+                    : Mathf.Abs(currentDragGrid.y - originalGridY);
+
+                allowMove = moveDistance <= 1;
+            }
+
+            if (allowMove)
             {
                 // Try to move to the new grid position (pushing blocks if needed)
                 // IMPORTANT: Use lastDragGrid (current position) as fromX/fromY
@@ -280,7 +301,7 @@ public class Block : MonoBehaviour, IPointerDownHandler, IBeginDragHandler, IDra
             }
             else
             {
-                // Already moved one cell - don't allow further movement
+                // Movement not allowed by current mode
                 currentDragGrid = lastDragGrid;
             }
         }
@@ -322,21 +343,26 @@ public class Block : MonoBehaviour, IPointerDownHandler, IBeginDragHandler, IDra
 
         int cellsAlreadyMoved = Mathf.Abs(gridDistanceMoved);
 
-        // Limit to one cell movement only
-        // If already moved during drag, no additional movement
+        // SlideToEnd mode: continue sliding to the end in the determined direction
+        if (grid.moveMode == BlockMoveMode.SlideToEnd && (dx != 0 || dy != 0))
+        {
+            SlideToEnd(dx, dy);
+            grid.ResetDragSession();
+            return;
+        }
+
+        // OneCell and FreeDrag modes: handle normally
         if (cellsAlreadyMoved > 0)
         {
-            // Already moved - just finalize position
             SetGridPosition(gridX, gridY, false);
-            bool merged = grid.CheckAdjacentBlocks(this);
+
+            // Check entire grid for merges
+            bool merged = grid.CheckAndMergeAllPossibleRectangles();
 
             // Spawn a new random block only if no merge occurred
-            if (!merged)
-            {
-                grid.SpawnRandomBlocks(1);
-            }
+            if (!merged) grid.SpawnRandomBlocks(1);
 
-            grid.ResetDragSession(); // Reset drag session for all blocks
+            grid.ResetDragSession();
             return;
         }
 
@@ -350,7 +376,6 @@ public class Block : MonoBehaviour, IPointerDownHandler, IBeginDragHandler, IDra
             if (targetX >= 0 && targetX + width <= grid.width &&
                 targetY >= 0 && targetY + height <= grid.height)
             {
-                // Try to move one cell
                 int currentGridX = gridX;
                 int currentGridY = gridY;
                 bool canMove = grid.TryMoveBlockWithPushingPublic(this, currentGridX, currentGridY, targetX, targetY, originalGridX, originalGridY);
@@ -359,34 +384,119 @@ public class Block : MonoBehaviour, IPointerDownHandler, IBeginDragHandler, IDra
                 {
                     gridX = targetX;
                     gridY = targetY;
-                    bool merged = grid.CheckAdjacentBlocks(this);
+
+                    // Check entire grid for merges
+                    bool merged = grid.CheckAndMergeAllPossibleRectangles();
 
                     // Spawn a new random block only if no merge occurred
-                    if (!merged)
-                    {
-                        grid.SpawnRandomBlocks(1);
-                    }
+                    if (!merged) grid.SpawnRandomBlocks(1);
                 }
                 else
                 {
-                    // Cannot move - stay at current position
                     SetGridPosition(gridX, gridY, false);
                 }
             }
             else
             {
-                // Out of bounds - stay at current position
                 SetGridPosition(gridX, gridY, false);
             }
         }
         else
         {
-            // No movement - just finalize position
             SetGridPosition(gridX, gridY, false);
         }
 
-        // Reset drag session for all blocks when drag ends
         grid.ResetDragSession();
+    }
+
+    private void SlideToEnd(int dx, int dy)
+    {
+        // Use a set to track which blocks have already been slid to avoid infinite recursion
+        System.Collections.Generic.HashSet<Block> alreadySlid = new System.Collections.Generic.HashSet<Block>();
+
+        bool moved = SlideBlockRecursive(this, dx, dy, alreadySlid);
+
+        if (moved)
+        {
+            // Check entire grid for merges
+            bool merged = grid.CheckAndMergeAllPossibleRectangles();
+
+            // Spawn a new random block only if no merge occurred
+            if (!merged) grid.SpawnRandomBlocks(1);
+        }
+    }
+
+    private bool SlideBlockRecursive(Block block, int dx, int dy, System.Collections.Generic.HashSet<Block> alreadySlid)
+    {
+        if (alreadySlid.Contains(block))
+        {
+            return false; // Already slid this block
+        }
+
+        alreadySlid.Add(block);
+        bool blockMoved = false;
+
+        // Continue sliding until blocked
+        while (true)
+        {
+            int targetX = block.gridX + dx;
+            int targetY = block.gridY + dy;
+
+            // Check bounds
+            if (targetX < 0 || targetX + block.width > grid.width ||
+                targetY < 0 || targetY + block.height > grid.height)
+            {
+                break;
+            }
+
+            // Check which blocks will be pushed before moving
+            var pushedBlocks = grid.GetBlocksToPushVisual(block, block.gridX, block.gridY, targetX, targetY);
+
+            // If there are blocks to push, recursively slide them first
+            if (pushedBlocks != null && pushedBlocks.Count > 0)
+            {
+                System.Collections.Generic.HashSet<Block> pushedBlockSet = new System.Collections.Generic.HashSet<Block>();
+                foreach (var moveInfo in pushedBlocks)
+                {
+                    if (moveInfo.block != block)
+                    {
+                        pushedBlockSet.Add(moveInfo.block);
+                    }
+                }
+
+                // Recursively slide all pushed blocks first
+                foreach (Block pushedBlock in pushedBlockSet)
+                {
+                    SlideBlockRecursive(pushedBlock, dx, dy, alreadySlid);
+                }
+            }
+
+            // Now try to move this block
+            int currentGridX = block.gridX;
+            int currentGridY = block.gridY;
+            bool canMove = grid.TryMoveBlockWithPushingPublic(block, currentGridX, currentGridY, targetX, targetY,
+                block.dragSessionStartX >= 0 ? block.dragSessionStartX : originalGridX,
+                block.dragSessionStartY >= 0 ? block.dragSessionStartY : originalGridY);
+
+            if (canMove)
+            {
+                block.gridX = targetX;
+                block.gridY = targetY;
+                blockMoved = true;
+            }
+            else
+            {
+                break;
+            }
+        }
+
+        // Update visual position for this block
+        if (blockMoved)
+        {
+            block.SetGridPosition(block.gridX, block.gridY, false);
+        }
+
+        return blockMoved;
     }
 
     private void SnapToNearestGrid()
@@ -395,33 +505,28 @@ public class Block : MonoBehaviour, IPointerDownHandler, IBeginDragHandler, IDra
         targetGrid.x = Mathf.Clamp(targetGrid.x, 0, grid.width - width);
         targetGrid.y = Mathf.Clamp(targetGrid.y, 0, grid.height - height);
 
-        // If target is different from current position, try to move (with pushing)
         if (targetGrid.x != gridX || targetGrid.y != gridY)
         {
-            // IMPORTANT: Save current position before calling TryMoveBlockWithPushingPublic
             int currentGridX = gridX;
             int currentGridY = gridY;
             bool canMove = grid.TryMoveBlockWithPushingPublic(this, currentGridX, currentGridY, targetGrid.x, targetGrid.y, originalGridX, originalGridY);
 
             if (canMove)
             {
-                // TryMoveBlockWithPushingPublic already updated grid data and called SetGridPosition
                 gridX = targetGrid.x;
                 gridY = targetGrid.y;
-                grid.CheckAdjacentBlocks(this);
+                grid.CheckAndMergeAllPossibleRectangles();
             }
             else
             {
-                // Cannot move - return to original position
                 gridX = originalGridX;
                 gridY = originalGridY;
-                SetGridPosition(originalGridX, originalGridY, false); // Smooth animation
+                SetGridPosition(originalGridX, originalGridY, false);
             }
         }
         else
         {
-            // Same position - just snap
-            SetGridPosition(gridX, gridY, false); // Smooth animation
+            SetGridPosition(gridX, gridY, false);
         }
     }
 
@@ -433,39 +538,28 @@ public class Block : MonoBehaviour, IPointerDownHandler, IBeginDragHandler, IDra
 
         while (currentSpeed > minSpeed && cellsMoved < maxCells)
         {
-            // Try to move one cell in the direction
             int targetX = gridX + dx;
             int targetY = gridY + dy;
 
-            // Check bounds
             if (targetX < 0 || targetX + width > grid.width ||
                 targetY < 0 || targetY + height > grid.height)
             {
                 break;
             }
 
-            // Try to move block (pushing adjacent blocks if needed)
-            // IMPORTANT: Use current gridX/gridY as fromX/fromY before they're updated
             int currentGridX = gridX;
             int currentGridY = gridY;
             bool canMove = grid.TryMoveBlockWithPushingPublic(this, currentGridX, currentGridY, targetX, targetY, originalGridX, originalGridY);
 
-            if (!canMove)
-            {
-                // Cannot move (blocked by immovable blocks or boundary)
-                break;
-            }
+            if (!canMove) break;
 
-            // Update block position (grid data and visual position already updated by TryMoveBlockWithPushingPublic)
             gridX = targetX;
             gridY = targetY;
             cellsMoved++;
 
-            // Calculate wait time based on current speed
             float moveTime = 1f / Mathf.Max(currentSpeed, 2f);
-            moveTime = Mathf.Clamp(moveTime, 0.05f, 0.3f); // Clamp for reasonable animation speed
+            moveTime = Mathf.Clamp(moveTime, 0.05f, 0.3f);
 
-            // Wait for animation to complete
             float elapsed = 0;
             while (elapsed < moveTime)
             {
@@ -473,27 +567,17 @@ public class Block : MonoBehaviour, IPointerDownHandler, IBeginDragHandler, IDra
                 yield return null;
             }
 
-            // Apply deceleration (time-based)
             currentSpeed -= deceleration * moveTime;
-
-            // Apply friction (per-cell friction when crossing cell boundary)
             currentSpeed -= frictionPerCell;
-            currentSpeed = Mathf.Max(currentSpeed, 0); // Prevent negative speed
+            currentSpeed = Mathf.Max(currentSpeed, 0);
         }
 
-        // Final position snap
         SetGridPosition(gridX, gridY, false);
-
-        // Wait for final animation to complete
         yield return new WaitForSeconds(smoothTime * 2f);
 
-        bool merged = grid.CheckAdjacentBlocks(this);
+        bool merged = grid.CheckAndMergeAllPossibleRectangles();
 
-        // Spawn a new random block only if moved and no merge occurred
-        if (cellsMoved > 0 && !merged)
-        {
-            grid.SpawnRandomBlocks(1);
-        }
+        if (cellsMoved > 0 && !merged) grid.SpawnRandomBlocks(1);
 
         isMoving = false;
     }

@@ -17,6 +17,7 @@ public class UIController : MonoBehaviour
     [Header("UI Elements")]
     public Toggle gravityToggle;
     public Toggle autoSpawnToggle;
+    public TMP_Dropdown moveModeDropdown;
     public TMP_InputField widthInput;
     public TMP_InputField heightInput;
     public Button createGridButton;
@@ -33,6 +34,7 @@ public class UIController : MonoBehaviour
         SetupInputFields();
         SetupButtons();
         SetupToggles();
+        SetupDropdowns();
         OnCreateGridClicked();
     }
 
@@ -68,6 +70,23 @@ public class UIController : MonoBehaviour
         else if (blockGrid != null)
         {
             blockGrid.SetAutoSpawn(true);
+        }
+    }
+
+    private void SetupDropdowns()
+    {
+        if (moveModeDropdown != null)
+        {
+            moveModeDropdown.ClearOptions();
+            moveModeDropdown.AddOptions(new System.Collections.Generic.List<string>
+            {
+                "1",
+                "Free",
+                "End"
+            });
+            moveModeDropdown.value = 0; // Default: OneCell
+            moveModeDropdown.onValueChanged.AddListener(OnMoveModeChanged);
+            OnMoveModeChanged(0); // Initialize
         }
     }
 
@@ -113,6 +132,14 @@ public class UIController : MonoBehaviour
     public void OnAutoSpawnToggled(bool isOn)
     {
         if (blockGrid != null) blockGrid.SetAutoSpawn(isOn);
+    }
+
+    public void OnMoveModeChanged(int index)
+    {
+        if (blockGrid == null) return;
+
+        BlockMoveMode mode = (BlockMoveMode)index;
+        blockGrid.SetMoveMode(mode);
     }
 
     private int ParseInput(TMP_InputField inputField, int defaultValue)

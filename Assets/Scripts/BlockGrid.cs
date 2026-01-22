@@ -3,6 +3,13 @@ using UnityEngine.EventSystems;
 using System.Collections;
 using System.Collections.Generic;
 
+public enum BlockMoveMode
+{
+    OneCell,        // 한 셀만 이동 (현재 방식)
+    FreeDrag,       // 자유 드래그 (제약 없음)
+    SlideToEnd      // 방향으로 끝까지 슬라이드
+}
+
 public class BlockGrid : MonoBehaviour
 {
     [Header("Grid Settings")]
@@ -10,6 +17,10 @@ public class BlockGrid : MonoBehaviour
     public int height = 7;
     public float cellSize = 1f;
     public float cellSpacing = 0.1f;
+
+    [Header("Movement Settings")]
+    [Tooltip("Block movement mode")]
+    public BlockMoveMode moveMode = BlockMoveMode.OneCell;
 
     [Header("Block Settings")]
     public GameObject blockPrefab;
@@ -212,7 +223,8 @@ public class BlockGrid : MonoBehaviour
         }
 
         // Check if this block would move more than 1 cell from its original position
-        if (originalPositions.ContainsKey(block))
+        // Only apply this restriction in OneCell mode
+        if (moveMode == BlockMoveMode.OneCell && originalPositions.ContainsKey(block))
         {
             Vector2Int originalPos = originalPositions[block];
             int moveDistanceX = Mathf.Abs(toX - originalPos.x);
@@ -408,7 +420,13 @@ public class BlockGrid : MonoBehaviour
 
     public void SpawnRandomBlocks(int count, bool forceSpawn = false)
     {
-        if (grid == null || (!autoSpawnEnabled && !forceSpawn)) return;
+        if (grid == null || (!autoSpawnEnabled && !forceSpawn))
+        {
+            Debug.Log($"[SPAWN] Skipped: grid={grid != null}, autoSpawn={autoSpawnEnabled}, force={forceSpawn}");
+            return;
+        }
+
+        Debug.Log($"[SPAWN] Starting: attempting to spawn {count} blocks");
 
         int spawned = 0;
         int attempts = 0;
@@ -424,12 +442,16 @@ public class BlockGrid : MonoBehaviour
 
             if (CanPlaceBlock(x, y, size.x, size.y))
             {
+                Debug.Log($"[SPAWN] Block {spawned+1}/{count} at ({x},{y}) size {size.x}x{size.y} color ({randomColor.r:F2},{randomColor.g:F2},{randomColor.b:F2})");
                 SpawnBlock(x, y, randomColor, size.x, size.y);
                 spawned++;
             }
         }
 
-        CheckAndMergeAllPossibleRectangles();
+        Debug.Log($"[SPAWN] Completed: spawned {spawned}/{count} blocks in {attempts} attempts");
+        Debug.Log($"[SPAWN] Now checking for merges after spawning...");
+        bool merged = CheckAndMergeAllPossibleRectangles();
+        Debug.Log($"[SPAWN] Merge check completed: {merged}");
     }
 
     private List<Vector2Int> GetEmptyCells()
@@ -612,63 +634,6 @@ public class BlockGrid : MonoBehaviour
         }
     }
 
-    /// <summary>
-    /// Checks for adjacent blocks with matching colors in all 4 directions
-    /// First tries to merge into rectangle, then triggers match event
-    /// Returns true if merge occurred, false otherwise
-    /// </summary>
-    public bool CheckAdjacentBlocks(Block block)
-    {
-        if (block == null) return false;
-
-        // 1. Try to find and merge rectangle first
-        List<Block> rectangleBlocks = FindRectangle(block);
-        if (rectangleBlocks != null && rectangleBlocks.Count > 1)
-        {
-            MergeBlocksToRectangle(rectangleBlocks);
-            return true; // Merge occurred
-        }
-
-        // 2. If no rectangle found, use existing match logic
-        List<Block> matches = new List<Block>();
-        matches.Add(block);
-
-        // Check all 4 directions
-        CheckDirection(block, matches, 1, 0);   // Right
-        CheckDirection(block, matches, -1, 0);  // Left
-        CheckDirection(block, matches, 0, 1);   // Up
-        CheckDirection(block, matches, 0, -1);  // Down
-
-        if (matches.Count > 1)
-        {
-            // Found adjacent blocks with same color
-            foreach (Block match in matches)
-            {
-                match.TriggerAdjacentMatch();
-            }
-        }
-
-        return false; // No merge occurred
-    }
-
-    private void CheckDirection(Block block, List<Block> matches, int dx, int dy)
-    {
-        int checkX = block.gridX + dx;
-        int checkY = block.gridY + dy;
-
-        if (!IsValidPosition(checkX, checkY)) return;
-
-        Block adjacentBlock = grid[checkX, checkY];
-
-        if (adjacentBlock != null &&
-            !matches.Contains(adjacentBlock) &&
-            ColorsMatch(block.blockColor, adjacentBlock.blockColor))
-        {
-            matches.Add(adjacentBlock);
-            // Recursively check in the same direction
-            CheckDirection(adjacentBlock, matches, dx, dy);
-        }
-    }
 
     /// <summary>
     /// Finds all blocks of same color that form a rectangle starting from the given block
@@ -714,6 +679,7 @@ public class BlockGrid : MonoBehaviour
                             adjacentBlock != current &&
                             ColorsMatch(startBlock.blockColor, adjacentBlock.blockColor))
                         {
+                            Debug.Log($"  [FIND] Found adjacent block at ({adjacentBlock.gridX},{adjacentBlock.gridY}) from cell ({cellX},{cellY})");
                             visited.Add(adjacentBlock);
                             queue.Enqueue(adjacentBlock);
                         }
@@ -722,38 +688,76 @@ public class BlockGrid : MonoBehaviour
             }
         }
 
+        Debug.Log($"  [FIND] BFS found {connectedBlocks.Count} connected blocks");
+
         if (connectedBlocks.Count < 2) return null;
-        return IsRectangle(connectedBlocks) ? connectedBlocks : null;
+
+        bool isRect = IsRectangle(connectedBlocks);
+        Debug.Log($"  [FIND] IsRectangle check: {isRect}");
+
+        return isRect ? connectedBlocks : null;
     }
 
     /// <summary>
     /// Scans entire grid and merges all possible rectangles
     /// Repeats until no more merges are possible
+    /// Returns true if any merge occurred
     /// </summary>
-    private void CheckAndMergeAllPossibleRectangles()
+    public bool CheckAndMergeAllPossibleRectangles()
     {
+        if (activeBlocks == null || activeBlocks.Count == 0)
+        {
+            Debug.Log("[MERGE] No active blocks to check");
+            return false;
+        }
+
+        Debug.Log($"[MERGE] Starting merge check with {activeBlocks.Count} blocks");
+
+        bool anyMergeOccurred = false;
         bool mergeOccurred;
+        int rounds = 0;
+
         do
         {
+            rounds++;
             mergeOccurred = false;
             List<Block> blocksToCheck = new List<Block>(activeBlocks);
             HashSet<Block> alreadyMerged = new HashSet<Block>();
+
+            Debug.Log($"[MERGE ROUND {rounds}] Checking {blocksToCheck.Count} blocks");
 
             foreach (Block block in blocksToCheck)
             {
                 if (block == null || !activeBlocks.Contains(block) || alreadyMerged.Contains(block))
                     continue;
 
+                Debug.Log($"[MERGE] Checking block at ({block.gridX},{block.gridY}) size {block.width}x{block.height} color ({block.blockColor.r:F2},{block.blockColor.g:F2},{block.blockColor.b:F2})");
+
                 List<Block> rectangleBlocks = FindRectangle(block);
                 if (rectangleBlocks != null && rectangleBlocks.Count > 1)
                 {
-                    foreach (Block b in rectangleBlocks) alreadyMerged.Add(b);
+                    Debug.Log($"[MERGE FOUND] {rectangleBlocks.Count} blocks can merge!");
+                    foreach (Block b in rectangleBlocks)
+                    {
+                        Debug.Log($"  - Block at ({b.gridX},{b.gridY}) size {b.width}x{b.height}");
+                        alreadyMerged.Add(b);
+                    }
+
                     MergeBlocksToRectangle(rectangleBlocks);
                     mergeOccurred = true;
+                    anyMergeOccurred = true;
                     break;
                 }
             }
+
+            if (!mergeOccurred)
+            {
+                Debug.Log($"[MERGE ROUND {rounds}] No merge found");
+            }
         } while (mergeOccurred);
+
+        Debug.Log($"[MERGE] Completed {rounds} rounds. Merge occurred: {anyMergeOccurred}");
+        return anyMergeOccurred;
     }
 
     /// <summary>
@@ -762,7 +766,11 @@ public class BlockGrid : MonoBehaviour
     /// </summary>
     private bool IsRectangle(List<Block> blocks)
     {
-        if (blocks == null || blocks.Count < 2) return false;
+        if (blocks == null || blocks.Count < 2)
+        {
+            Debug.Log($"  [RECT] Failed: blocks={blocks?.Count ?? 0} (need at least 2)");
+            return false;
+        }
 
         int minX = int.MaxValue;
         int minY = int.MaxValue;
@@ -781,18 +789,34 @@ public class BlockGrid : MonoBehaviour
             if (blockMaxY > maxY) maxY = blockMaxY;
         }
 
+        Debug.Log($"  [RECT] Bounds: ({minX},{minY}) to ({maxX},{maxY}) = {maxX-minX+1}x{maxY-minY+1}");
+
         HashSet<Block> blockSet = new HashSet<Block>(blocks);
         for (int x = minX; x <= maxX; x++)
         {
             for (int y = minY; y <= maxY; y++)
             {
-                if (!IsValidPosition(x, y)) return false;
+                if (!IsValidPosition(x, y))
+                {
+                    Debug.Log($"  [RECT] Failed: Cell ({x},{y}) is out of bounds");
+                    return false;
+                }
 
                 Block cellBlock = grid[x, y];
-                if (cellBlock == null || !blockSet.Contains(cellBlock)) return false;
+                if (cellBlock == null)
+                {
+                    Debug.Log($"  [RECT] Failed: Cell ({x},{y}) is empty (gap in rectangle)");
+                    return false;
+                }
+                if (!blockSet.Contains(cellBlock))
+                {
+                    Debug.Log($"  [RECT] Failed: Cell ({x},{y}) contains different block at ({cellBlock.gridX},{cellBlock.gridY})");
+                    return false;
+                }
             }
         }
 
+        Debug.Log($"  [RECT] Success: Valid rectangle {maxX-minX+1}x{maxY-minY+1}");
         return true;
     }
 
@@ -909,9 +933,16 @@ public class BlockGrid : MonoBehaviour
     private bool ColorsMatch(Color a, Color b)
     {
         float threshold = 0.1f;
-        return Mathf.Abs(a.r - b.r) < threshold &&
-               Mathf.Abs(a.g - b.g) < threshold &&
-               Mathf.Abs(a.b - b.b) < threshold;
+        bool matches = Mathf.Abs(a.r - b.r) < threshold &&
+                      Mathf.Abs(a.g - b.g) < threshold &&
+                      Mathf.Abs(a.b - b.b) < threshold;
+
+        if (!matches)
+        {
+            Debug.Log($"  [COLOR] Mismatch: ({a.r:F2},{a.g:F2},{a.b:F2}) vs ({b.r:F2},{b.g:F2},{b.b:F2})");
+        }
+
+        return matches;
     }
 
     public void ApplyGravity()
@@ -954,13 +985,7 @@ public class BlockGrid : MonoBehaviour
         }
 
         // Check for matches after gravity settles
-        foreach (Block block in activeBlocks)
-        {
-            if (block != null)
-            {
-                CheckAdjacentBlocks(block);
-            }
-        }
+        CheckAndMergeAllPossibleRectangles();
     }
 
     public void SetGravity(bool enabled)
@@ -976,6 +1001,11 @@ public class BlockGrid : MonoBehaviour
     public void SetAutoSpawn(bool enabled)
     {
         autoSpawnEnabled = enabled;
+    }
+
+    public void SetMoveMode(BlockMoveMode mode)
+    {
+        moveMode = mode;
     }
 
     // Get grid bounds for camera
