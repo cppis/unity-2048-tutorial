@@ -2,8 +2,8 @@ using UnityEngine;
 
 public class QubeGrid : MonoBehaviour
 {
-    public const int WIDTH = 8;
-    public const int HEIGHT = 6;
+    public const int WIDTH = 12;
+    public const int HEIGHT = 9;
 
     public GameObject cellPrefab;
     public float cellSize = 80f;
@@ -76,13 +76,13 @@ public class QubeGrid : MonoBehaviour
         return cell != null && cell.isOccupied;
     }
 
-    public void SetCellOccupied(Vector2Int coords, bool occupied, Color color)
+    public void SetCellOccupied(Vector2Int coords, bool occupied, Color color, bool wasCleared = false)
     {
         QubeCell cell = GetCell(coords);
         if (cell != null)
         {
-            cell.SetOccupied(occupied, color);
-            Debug.Log($"Cell {coords} set to {(occupied ? "occupied" : "empty")}");
+            cell.SetOccupied(occupied, color, wasCleared);
+            Debug.Log($"Cell {coords} set to {(occupied ? "occupied" : "empty")}{(wasCleared ? " (cleared)" : "")}");
         }
     }
 

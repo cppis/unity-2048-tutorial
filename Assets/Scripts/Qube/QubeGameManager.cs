@@ -24,6 +24,10 @@ public class QubeGameManager : MonoBehaviour
     private int score = 0;
     private bool isGameOver = false;
 
+    // 회전 반복 입력 처리
+    private float rotateRepeatDelay = 0.15f; // 회전 반복 간격 (초)
+    private float lastRotateTime = 0f;
+
     private void Awake()
     {
         if (Instance != null && Instance != this)
@@ -57,6 +61,7 @@ public class QubeGameManager : MonoBehaviour
         score = 0;
         isGameOver = false;
         grid.ClearGrid();
+        pulseSystem.ClearAllQuads(); // 모든 Quad 리셋
 
         UpdateUI();
         SpawnNewBlock();
@@ -70,7 +75,7 @@ public class QubeGameManager : MonoBehaviour
             return;
         }
 
-        // 랜덤 블록 선택 (기본 4종만 사용)
+        // 랜덤 블록 선택 (기본 4종만 사용: L, I, T, 1x1)
         QubeBlockShape randomShape = blockShapes[Random.Range(0, Mathf.Min(4, blockShapes.Length))];
 
         // 블록 생성 (Canvas의 자식으로 생성)
@@ -118,14 +123,30 @@ public class QubeGameManager : MonoBehaviour
             currentBlock.Move(Vector2Int.down);
         }
 
-        // 회전 (Q: 반시계, E: 시계)
-        if (Input.GetKeyDown(KeyCode.Q))
+        // 회전 (Q: 반시계, E: 시계) - 누르고 있으면 계속 회전
+        bool shouldRotate = false;
+        bool clockwise = false;
+
+        if (Input.GetKey(KeyCode.Q))
         {
-            currentBlock.Rotate(false);
+            shouldRotate = true;
+            clockwise = false;
         }
-        else if (Input.GetKeyDown(KeyCode.E))
+        else if (Input.GetKey(KeyCode.E))
         {
-            currentBlock.Rotate(true);
+            shouldRotate = true;
+            clockwise = true;
+        }
+
+        if (shouldRotate)
+        {
+            // 첫 입력이거나 딜레이 시간이 지났으면 회전
+            if (Input.GetKeyDown(KeyCode.Q) || Input.GetKeyDown(KeyCode.E) ||
+                Time.time - lastRotateTime >= rotateRepeatDelay)
+            {
+                currentBlock.Rotate(clockwise);
+                lastRotateTime = Time.time;
+            }
         }
 
         // 배치 (Space)
@@ -176,8 +197,8 @@ public class QubeGameManager : MonoBehaviour
         if (turnCounterText != null)
         {
             int currentTurn = pulseSystem.GetTurnCounter();
-            int maxTurn = pulseSystem.GetPulseInterval();
-            turnCounterText.text = $"Turn: {currentTurn}/{maxTurn}";
+            int activeQuads = pulseSystem.GetActiveQuads().Count;
+            turnCounterText.text = $"Turn: {currentTurn} | Quads: {activeQuads}";
         }
     }
 

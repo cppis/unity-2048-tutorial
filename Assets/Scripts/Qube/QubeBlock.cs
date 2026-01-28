@@ -154,24 +154,50 @@ public class QubeBlock : MonoBehaviour
             }
         }
 
-        // 회전 후 위치가 유효한지 확인 (점유 여부는 무시)
-        bool canRotate = true;
-        foreach (var cell in rotatedCells)
+        // Wall Kick: 회전 후 벽에 막히면 위치를 조정하여 회전 시도
+        Vector2Int[] kickOffsets = new Vector2Int[]
         {
-            Vector2Int checkPos = position + cell;
-            if (!grid.IsValidPosition(checkPos))
+            new Vector2Int(0, 0),   // 원래 위치
+            new Vector2Int(-1, 0),  // 왼쪽
+            new Vector2Int(1, 0),   // 오른쪽
+            new Vector2Int(0, 1),   // 위
+            new Vector2Int(0, -1),  // 아래
+            new Vector2Int(-1, 1),  // 왼쪽 위
+            new Vector2Int(1, 1),   // 오른쪽 위
+            new Vector2Int(-1, -1), // 왼쪽 아래
+            new Vector2Int(1, -1)   // 오른쪽 아래
+        };
+
+        // 각 오프셋을 시도하여 회전 가능한 위치 찾기
+        foreach (var offset in kickOffsets)
+        {
+            Vector2Int testPos = position + offset;
+            bool canRotate = true;
+
+            // 회전 후 위치가 유효한지 확인 (점유 여부는 무시)
+            foreach (var cell in rotatedCells)
             {
-                canRotate = false;
-                break;
+                Vector2Int checkPos = testPos + cell;
+                if (!grid.IsValidPosition(checkPos))
+                {
+                    canRotate = false;
+                    break;
+                }
+            }
+
+            if (canRotate)
+            {
+                // 회전 성공
+                position = testPos;
+                currentCells = rotatedCells;
+                rotation = (rotation + (clockwise ? 1 : 3)) % 4;
+                CreateVisuals();
+                return;
             }
         }
 
-        if (canRotate)
-        {
-            currentCells = rotatedCells;
-            rotation = (rotation + (clockwise ? 1 : 3)) % 4;
-            CreateVisuals();
-        }
+        // 모든 오프셋 시도 후에도 회전 불가
+        Debug.Log("Cannot rotate - no valid position found");
     }
 
     public void Place()
