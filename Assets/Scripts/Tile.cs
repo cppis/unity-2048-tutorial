@@ -23,7 +23,19 @@ public class Tile : MonoBehaviour
     public void SetState(TileState state)
     {
         this.state = state;
-        background.color = state.backgroundColor;
+
+        // sprite가 설정되어 있으면 sprite 사용, 없으면 색상 사용
+        if (state.backgroundSprite != null)
+        {
+            background.sprite = state.backgroundSprite;
+            background.color = Color.white; // sprite에 색상 적용하지 않음
+        }
+        else
+        {
+            background.sprite = null;
+            background.color = state.backgroundColor;
+        }
+
         text.color = state.textColor;
         text.text = state.number.ToString();
     }

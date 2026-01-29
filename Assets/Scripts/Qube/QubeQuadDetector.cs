@@ -97,7 +97,12 @@ public class QubeQuadDetector : MonoBehaviour
             }
         }
 
-        Debug.Log($"  Found {blockGroups.Count} distinct blocks in region");
+        Debug.Log($"  Found {blockGroups.Count} distinct blocks in region:");
+        foreach (var kvp in blockGroups)
+        {
+            string cellsStr = string.Join(", ", kvp.Value.ConvertAll(c => $"({c.x},{c.y})"));
+            Debug.Log($"    Block {kvp.Key}: {kvp.Value.Count} cells - {cellsStr}");
+        }
 
         // 2. 사용된 블록 추적 (블록은 하나의 quad에만 속해야 함)
         HashSet<int> usedBlocks = new HashSet<int>();
@@ -112,6 +117,8 @@ public class QubeQuadDetector : MonoBehaviour
             if (cell.y < minY) minY = cell.y;
             if (cell.y > maxY) maxY = cell.y;
         }
+
+        Debug.Log($"  Region bounds: ({minX},{minY}) to ({maxX},{maxY})");
 
         // 4. 큰 직사각형부터 찾기 (greedy)
         for (int height = maxY - minY + 1; height >= 2; height--)
@@ -166,18 +173,54 @@ public class QubeQuadDetector : MonoBehaviour
 
                         // 각 관련 블록이 완전히 포함되는지 확인 (블록 분할 방지)
                         bool allBlocksComplete = true;
+                        string blockCheckLog = "";
+                        List<string> missingCellsLog = new List<string>();
+
                         foreach (int blockId in involvedBlocks)
                         {
                             List<Vector2Int> blockCells = blockGroups[blockId];
+                            int cellsInQuad = 0;
+                            int cellsOutsideQuad = 0;
+                            List<Vector2Int> outsideCells = new List<Vector2Int>();
+
                             foreach (var blockCell in blockCells)
                             {
-                                if (!quadCells.Contains(blockCell))
+                                if (quadCells.Contains(blockCell))
                                 {
-                                    allBlocksComplete = false;
-                                    break;
+                                    cellsInQuad++;
+                                }
+                                else
+                                {
+                                    cellsOutsideQuad++;
+                                    outsideCells.Add(blockCell);
                                 }
                             }
-                            if (!allBlocksComplete) break;
+
+                            blockCheckLog += $" Block{blockId}({cellsInQuad}/{blockCells.Count})";
+
+                            if (cellsOutsideQuad > 0)
+                            {
+                                allBlocksComplete = false;
+                                string outsideStr = string.Join(", ", outsideCells.ConvertAll(c => $"({c.x},{c.y})"));
+                                missingCellsLog.Add($"Block{blockId} missing: {outsideStr}");
+                            }
+                        }
+
+                        // 3x3 이상인 경우 상세 로그 출력
+                        if (width >= 3 && height >= 3)
+                        {
+                            string quadCellsStr = string.Join(", ", quadCells.ConvertAll(c => $"({c.x},{c.y})"));
+                            Debug.Log($"  Checking {width}x{height} at ({startX},{startY}):");
+                            Debug.Log($"    Cells: {quadCellsStr}");
+                            Debug.Log($"    Blocks:{blockCheckLog}");
+                            Debug.Log($"    allBlocksComplete={allBlocksComplete}");
+                            if (!allBlocksComplete && missingCellsLog.Count > 0)
+                            {
+                                foreach (var log in missingCellsLog)
+                                {
+                                    Debug.Log($"      ✗ {log}");
+                                }
+                            }
                         }
 
                         if (allBlocksComplete)

@@ -1,3 +1,4 @@
+using System.Collections;
 using UnityEngine;
 using UnityEngine.UI;
 using TMPro;
@@ -23,10 +24,7 @@ public class QubeGameManager : MonoBehaviour
     private QubeBlock currentBlock;
     private int score = 0;
     private bool isGameOver = false;
-
-    // 회전 반복 입력 처리
-    private float rotateRepeatDelay = 0.15f; // 회전 반복 간격 (초)
-    private float lastRotateTime = 0f;
+    private bool isPlacingBlock = false; // 블록 배치 중 플래그
 
     private void Awake()
     {
@@ -60,6 +58,7 @@ public class QubeGameManager : MonoBehaviour
     {
         score = 0;
         isGameOver = false;
+        isPlacingBlock = false; // 플래그 초기화
         grid.ClearGrid();
         pulseSystem.ClearAllQuads(); // 모든 Quad 리셋
 
@@ -123,61 +122,55 @@ public class QubeGameManager : MonoBehaviour
             currentBlock.Move(Vector2Int.down);
         }
 
-        // 회전 (Q: 반시계, E: 시계) - 누르고 있으면 계속 회전
-        bool shouldRotate = false;
-        bool clockwise = false;
-
-        if (Input.GetKey(KeyCode.Q))
+        // 회전 (Q: 반시계, E: 시계) - 한 번 클릭 시 한 번만 회전
+        if (Input.GetKeyDown(KeyCode.Q))
         {
-            shouldRotate = true;
-            clockwise = false;
+            currentBlock.Rotate(clockwise: false);
         }
-        else if (Input.GetKey(KeyCode.E))
+        else if (Input.GetKeyDown(KeyCode.E))
         {
-            shouldRotate = true;
-            clockwise = true;
-        }
-
-        if (shouldRotate)
-        {
-            // 첫 입력이거나 딜레이 시간이 지났으면 회전
-            if (Input.GetKeyDown(KeyCode.Q) || Input.GetKeyDown(KeyCode.E) ||
-                Time.time - lastRotateTime >= rotateRepeatDelay)
-            {
-                currentBlock.Rotate(clockwise);
-                lastRotateTime = Time.time;
-            }
+            currentBlock.Rotate(clockwise: true);
         }
 
         // 배치 (Space)
-        if (Input.GetKeyDown(KeyCode.Space))
+        if (Input.GetKeyDown(KeyCode.Space) && !isPlacingBlock)
         {
-            PlaceBlock();
+            StartCoroutine(PlaceBlockCoroutine());
         }
     }
 
-    private void PlaceBlock()
+    private IEnumerator PlaceBlockCoroutine()
     {
-        if (currentBlock == null) return;
+        if (currentBlock == null || isPlacingBlock) yield break;
 
         // 배치 가능한지 확인
         if (!currentBlock.CanPlace())
         {
             Debug.Log("Cannot place block - cells are occupied!");
-            return;
+            yield break;
         }
+
+        // 블록 배치 시작
+        isPlacingBlock = true;
 
         // 블록 배치
         currentBlock.Place();
         currentBlock = null;
 
-        // 턴 증가
+        // 한 프레임 대기 - grid 상태가 완전히 갱신될 때까지 대기
+        yield return null;
+
+        // 턴 증가 및 quad 감지
         pulseSystem.IncrementTurn();
 
         UpdateUI();
 
-        // 다음 블록 생성
-        Invoke(nameof(SpawnNewBlock), 0.2f);
+        // 다음 블록 생성 (0.2초 후)
+        yield return new WaitForSeconds(0.2f);
+        SpawnNewBlock();
+
+        // 블록 배치 완료
+        isPlacingBlock = false;
     }
 
     private void OnPulseTriggered(int pulseScore)

@@ -8,6 +8,7 @@ public class TileBoard : MonoBehaviour
 
     [SerializeField] private Tile tilePrefab;
     [SerializeField] private TileState[] tileStates;
+    [SerializeField] private GridSettings gridSettings;
 
     private TileGrid grid;
     private List<Tile> tiles;
@@ -17,6 +18,21 @@ public class TileBoard : MonoBehaviour
     {
         grid = GetComponentInChildren<TileGrid>();
         tiles = new List<Tile>(16);
+    }
+
+    private void Start()
+    {
+        ApplyGridSettings();
+    }
+
+    private void ApplyGridSettings()
+    {
+        if (gridSettings == null) return;
+
+        foreach (var cell in grid.cells)
+        {
+            cell.SetAppearance(gridSettings.cellSprite, gridSettings.cellColor);
+        }
     }
 
     public void ClearBoard()

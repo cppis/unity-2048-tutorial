@@ -64,15 +64,19 @@ public class QubeCell : MonoBehaviour
         RectTransform rectTransform = SetupTimerRectTransform(textObj);
         turnTimerText = SetupTimerTextComponent(textObj);
 
-        // Hierarchy에서 가장 나중에 렌더링되도록 설정
-        textObj.transform.SetAsLastSibling();
+        // Canvas 컴포넌트 추가하여 렌더링 순서 제어
+        Canvas canvas = textObj.AddComponent<Canvas>();
+        canvas.overrideSorting = true;
+        canvas.sortingOrder = 1000; // 매우 높은 값으로 설정하여 항상 최상위에 렌더링
 
-        // CanvasGroup으로 렌더링 순서 제어
+        // GraphicRaycaster는 필요없으므로 추가하지 않음 (성능 최적화)
+
+        // CanvasGroup으로 raycast 제어
         CanvasGroup canvasGroup = textObj.AddComponent<CanvasGroup>();
         canvasGroup.blocksRaycasts = false;
         canvasGroup.interactable = false;
 
-        Debug.Log($"[CreateTurnTimerText] Cell ({coordinates.x},{coordinates.y}): Created turn counter text, siblingIndex={textObj.transform.GetSiblingIndex()}");
+        Debug.Log($"[CreateTurnTimerText] Cell ({coordinates.x},{coordinates.y}): Created turn counter text with Canvas sortingOrder=1000");
     }
 
     private RectTransform SetupTimerRectTransform(GameObject textObj)

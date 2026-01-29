@@ -15,12 +15,20 @@ public class QubePulseSystem : MonoBehaviour
 
     private int globalTurnCounter = 0;
     private List<QubeQuad> trackedQuads = new List<QubeQuad>();
+    private bool isProcessingTurn = false; // 턴 처리 중 플래그
 
     public delegate void OnPulseDelegate(int score);
     public event OnPulseDelegate OnPulse;
 
     public void IncrementTurn()
     {
+        if (isProcessingTurn)
+        {
+            Debug.LogWarning("Turn is already being processed, skipping duplicate call");
+            return;
+        }
+
+        isProcessingTurn = true;
         globalTurnCounter++;
         Debug.Log($"\n=== Turn {globalTurnCounter} Started ===");
 
@@ -65,6 +73,9 @@ public class QubePulseSystem : MonoBehaviour
         // 5. 현재 활성화된 Quad들 하이라이트 (PULSE_INTERVAL 전달)
         quadDetector.HighlightQuads(trackedQuads, PULSE_INTERVAL);
         Debug.Log($"=== Turn {globalTurnCounter} Ended: {trackedQuads.Count} active quads ===\n");
+
+        // 턴 처리 완료
+        isProcessingTurn = false;
     }
 
     private void ProcessNewQuad(QubeQuad newQuad)
@@ -276,6 +287,7 @@ public class QubePulseSystem : MonoBehaviour
         // 게임 리셋 시 모든 Quad 클리어
         trackedQuads.Clear();
         globalTurnCounter = 0;
+        isProcessingTurn = false; // 플래그 초기화
         Debug.Log("All quads cleared");
     }
 
