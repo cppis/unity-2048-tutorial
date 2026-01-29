@@ -69,60 +69,146 @@ public class QubePulseSystem : MonoBehaviour
 
     private void ProcessNewQuad(QubeQuad newQuad)
     {
-        // 기존 Quad들과 겹치거나 인접한지 확인
-        List<QubeQuad> relatedQuads = new List<QubeQuad>();
+        Debug.Log($"\n[ProcessNewQuad] NEW QUAD: {newQuad.width}x{newQuad.height} at ({newQuad.minX},{newQuad.minY}), size={newQuad.size}");
+        Debug.Log($"[ProcessNewQuad] Currently tracking {trackedQuads.Count} quads");
 
+        // 기존 Quad와 완전히 동일한지 먼저 확인 (같은 영역이면 무시)
         foreach (var existingQuad in trackedQuads)
         {
-            // 겹치거나 인접한 Quad 찾기
-            if (newQuad.OverlapsWith(existingQuad) || newQuad.IsAdjacentTo(existingQuad))
+            if (IsSameQuad(newQuad, existingQuad))
             {
-                relatedQuads.Add(existingQuad);
+                Debug.Log($"[ProcessNewQuad] ✓ Same quad already tracked, ignoring (turnTimer={existingQuad.turnTimer})");
+                return;
             }
         }
 
-        if (relatedQuads.Count == 0)
+        // 기존 Quad들과 겹치거나 인접한지 확인
+        List<QubeQuad> overlappingQuads = new List<QubeQuad>();
+        List<QubeQuad> adjacentQuads = new List<QubeQuad>();
+
+        foreach (var existingQuad in trackedQuads)
         {
-            // 완전히 새로운 Quad (겹치지도 인접하지도 않음)
+            Debug.Log($"[ProcessNewQuad] Checking existing Quad: {existingQuad.width}x{existingQuad.height} at ({existingQuad.minX},{existingQuad.minY}), turnTimer={existingQuad.turnTimer}");
+
+            bool overlaps = newQuad.OverlapsWith(existingQuad);
+            bool adjacent = newQuad.IsAdjacentTo(existingQuad);
+
+            Debug.Log($"[ProcessNewQuad]   → Overlaps: {overlaps}, Adjacent: {adjacent}");
+
+            if (overlaps)
+            {
+                overlappingQuads.Add(existingQuad);
+            }
+            else if (adjacent)
+            {
+                adjacentQuads.Add(existingQuad);
+            }
+        }
+
+        Debug.Log($"[ProcessNewQuad] Found {overlappingQuads.Count} overlapping, {adjacentQuads.Count} adjacent quads");
+
+        // Case 1: 겹치는 Quad가 있는 경우
+        if (overlappingQuads.Count > 0)
+        {
+            ProcessOverlappingQuads(newQuad, overlappingQuads, adjacentQuads);
+        }
+        // Case 2: 인접한 Quad만 있는 경우
+        else if (adjacentQuads.Count > 0)
+        {
+            ProcessAdjacentQuads(newQuad, adjacentQuads);
+        }
+        // Case 3: 완전히 새로운 Quad
+        else
+        {
             newQuad.creationTurn = globalTurnCounter;
             trackedQuads.Add(newQuad);
             Debug.Log($"→ New Quad added: {newQuad.width}x{newQuad.height} at ({newQuad.minX},{newQuad.minY})");
         }
+    }
+
+    private void ProcessOverlappingQuads(QubeQuad newQuad, List<QubeQuad> overlappingQuads, List<QubeQuad> adjacentQuads)
+    {
+        Debug.Log($"[ProcessOverlappingQuads] Processing {overlappingQuads.Count} overlapping + {adjacentQuads.Count} adjacent quads");
+
+        // 새로 감지된 Quad가 기존 Quad들을 포함하거나 확장하는 경우
+        // 모든 관련 Quad들 (overlapping + adjacent)과 병합 시도
+        List<QubeQuad> allRelatedQuads = new List<QubeQuad>(overlappingQuads);
+        allRelatedQuads.AddRange(adjacentQuads);
+
+        QubeQuad mergedQuad = newQuad;
+        bool canMergeAll = true;
+
+        foreach (var quad in allRelatedQuads)
+        {
+            Debug.Log($"[ProcessOverlappingQuads] Trying to merge with Quad {quad.width}x{quad.height}");
+            bool canMerge = mergedQuad.CanMergeWith(quad);
+            Debug.Log($"[ProcessOverlappingQuads]   → CanMerge: {canMerge}");
+
+            if (!canMerge)
+            {
+                canMergeAll = false;
+                break;
+            }
+            mergedQuad = mergedQuad.MergeWith(quad, globalTurnCounter);
+            Debug.Log($"[ProcessOverlappingQuads]   → Merged! New size: {mergedQuad.width}x{mergedQuad.height} (size={mergedQuad.size})");
+        }
+
+        Debug.Log($"[ProcessOverlappingQuads] canMergeAll={canMergeAll}, mergedQuad.size={mergedQuad.size}, newQuad.size={newQuad.size}");
+        Debug.Log($"[ProcessOverlappingQuads] Condition check: {canMergeAll} && {mergedQuad.size} >= {newQuad.size} = {canMergeAll && mergedQuad.size >= newQuad.size}");
+
+        // 병합 가능하고, 결과가 새 Quad보다 크거나 같으면 교체
+        // (크거나 같음: 확장 또는 포함 관계를 모두 처리)
+        if (canMergeAll && mergedQuad.size >= newQuad.size)
+        {
+            foreach (var quad in allRelatedQuads)
+            {
+                trackedQuads.Remove(quad);
+                Debug.Log($"→ Removed old Quad: {quad.width}x{quad.height} (turnTimer was {quad.turnTimer})");
+            }
+
+            trackedQuads.Add(mergedQuad);
+            Debug.Log($"→ Expanded to {mergedQuad.width}x{mergedQuad.height} Quad (turnTimer={mergedQuad.turnTimer}, creationTurn={mergedQuad.creationTurn})");
+        }
         else
         {
-            // 겹치거나 인접한 Quad가 있음 - 병합 시도
-            QubeQuad mergedQuad = newQuad;
-            List<QubeQuad> quadsToMerge = new List<QubeQuad>(relatedQuads);
+            Debug.Log($"→ Cannot merge overlapping Quads - keeping existing Quads");
+        }
+    }
 
-            // 모든 관련 Quad들을 하나로 병합 시도
-            bool canMergeAll = true;
-            foreach (var quad in relatedQuads)
+    private void ProcessAdjacentQuads(QubeQuad newQuad, List<QubeQuad> adjacentQuads)
+    {
+        // 인접한 Quad들과 병합하여 더 큰 Quad 생성 시도
+        QubeQuad mergedQuad = newQuad;
+        bool canMergeAll = true;
+
+        foreach (var quad in adjacentQuads)
+        {
+            if (!mergedQuad.CanMergeWith(quad))
             {
-                if (!mergedQuad.CanMergeWith(quad))
-                {
-                    canMergeAll = false;
-                    break;
-                }
-                mergedQuad = mergedQuad.MergeWith(quad, globalTurnCounter);
+                canMergeAll = false;
+                break;
+            }
+            mergedQuad = mergedQuad.MergeWith(quad, globalTurnCounter);
+        }
+
+        // 병합해서 더 큰 Quad가 되는 경우에만 병합
+        if (canMergeAll && mergedQuad.size > newQuad.size)
+        {
+            foreach (var quad in adjacentQuads)
+            {
+                trackedQuads.Remove(quad);
+                Debug.Log($"→ Removed old Quad: {quad.width}x{quad.height} (turnTimer was {quad.turnTimer})");
             }
 
-            if (canMergeAll && mergedQuad.size > newQuad.size)
-            {
-                // 더 큰 Quad로 병합 성공
-                foreach (var quad in relatedQuads)
-                {
-                    trackedQuads.Remove(quad);
-                    Debug.Log($"→ Removed old Quad: {quad.width}x{quad.height}");
-                }
-
-                trackedQuads.Add(mergedQuad);
-                Debug.Log($"→ Merged into larger Quad: {mergedQuad.width}x{mergedQuad.height} (turnTimer reset)");
-            }
-            else
-            {
-                // 병합 불가능 - 기존 Quad 유지
-                Debug.Log($"→ Cannot merge - keeping existing Quads");
-            }
+            trackedQuads.Add(mergedQuad);
+            Debug.Log($"→ Merged adjacent Quads into {mergedQuad.width}x{mergedQuad.height} (turnTimer={mergedQuad.turnTimer}, creationTurn={mergedQuad.creationTurn})");
+        }
+        else
+        {
+            // 병합 불가능하거나 크기가 같으면 새 Quad 추가
+            newQuad.creationTurn = globalTurnCounter;
+            trackedQuads.Add(newQuad);
+            Debug.Log($"→ New Quad added (adjacent but cannot merge): {newQuad.width}x{newQuad.height}");
         }
     }
 
@@ -191,5 +277,12 @@ public class QubePulseSystem : MonoBehaviour
         trackedQuads.Clear();
         globalTurnCounter = 0;
         Debug.Log("All quads cleared");
+    }
+
+    // 두 Quad가 완전히 동일한지 확인 (같은 영역인지)
+    private bool IsSameQuad(QubeQuad a, QubeQuad b)
+    {
+        return a.minX == b.minX && a.maxX == b.maxX &&
+               a.minY == b.minY && a.maxY == b.maxY;
     }
 }

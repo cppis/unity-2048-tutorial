@@ -8,6 +8,8 @@ public class QubeBlock : MonoBehaviour
     private const int SPAWN_Y_POSITION = 1;
     private const int ROTATION_COUNT = 4;
 
+    private static int nextBlockId = 0; // Static counter for unique block IDs
+
     private static readonly Vector2Int[] WALL_KICK_OFFSETS = new Vector2Int[]
     {
         new Vector2Int(0, 0),   // 원래 위치
@@ -200,12 +202,13 @@ public class QubeBlock : MonoBehaviour
     public void Place()
     {
         Transform placedContainer = grid.GetPlacedBlocksContainer();
+        int blockId = nextBlockId++; // Generate unique block ID
 
         for (int i = 0; i < currentCells.Length; i++)
         {
             Vector2Int globalPos = position + currentCells[i];
 
-            grid.SetCellOccupied(globalPos, true, shape.blockColor);
+            grid.SetCellOccupied(globalPos, true, shape.blockColor, false, blockId);
 
             GameObject cellObj = cellObjects[i];
             cellObj.name = $"PlacedCell_{globalPos.x}_{globalPos.y}";

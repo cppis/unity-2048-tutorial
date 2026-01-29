@@ -20,6 +20,7 @@ public class QubeCell : MonoBehaviour
     public Color cellColor;
     public Color originalColor;
     public int clearTimer = 0;
+    public int blockId = -1; // -1 means no block assigned
 
     private Image image;
     private Outline outline;
@@ -58,10 +59,20 @@ public class QubeCell : MonoBehaviour
     private void CreateTurnTimerText()
     {
         GameObject textObj = new GameObject("TurnTimerText");
-        textObj.transform.SetParent(transform);
+        textObj.transform.SetParent(transform, false); // worldPositionStays = false
 
         RectTransform rectTransform = SetupTimerRectTransform(textObj);
         turnTimerText = SetupTimerTextComponent(textObj);
+
+        // Hierarchy에서 가장 나중에 렌더링되도록 설정
+        textObj.transform.SetAsLastSibling();
+
+        // CanvasGroup으로 렌더링 순서 제어
+        CanvasGroup canvasGroup = textObj.AddComponent<CanvasGroup>();
+        canvasGroup.blocksRaycasts = false;
+        canvasGroup.interactable = false;
+
+        Debug.Log($"[CreateTurnTimerText] Cell ({coordinates.x},{coordinates.y}): Created turn counter text, siblingIndex={textObj.transform.GetSiblingIndex()}");
     }
 
     private RectTransform SetupTimerRectTransform(GameObject textObj)
@@ -85,6 +96,11 @@ public class QubeCell : MonoBehaviour
         textComponent.color = Color.white;
         textComponent.raycastTarget = false;
         textComponent.enabled = false;
+
+        // 텍스트 outline 추가 (어두운 배경에서도 보이도록)
+        textComponent.outlineWidth = 0.2f;
+        textComponent.outlineColor = Color.black;
+
         return textComponent;
     }
 
@@ -97,13 +113,13 @@ public class QubeCell : MonoBehaviour
         }
     }
 
-    public void SetOccupied(bool occupied, Color color, bool wasCleared = false)
+    public void SetOccupied(bool occupied, Color color, bool wasCleared = false, int blockIdValue = -1)
     {
         isOccupied = occupied;
 
         if (occupied)
         {
-            HandleOccupiedState(color);
+            HandleOccupiedState(color, blockIdValue);
         }
         else
         {
@@ -111,10 +127,11 @@ public class QubeCell : MonoBehaviour
         }
     }
 
-    private void HandleOccupiedState(Color color)
+    private void HandleOccupiedState(Color color, int blockIdValue)
     {
         originalColor = color;
         clearTimer = 0;
+        blockId = blockIdValue;
 
         // Outline이 작동하려면 Image가 활성화되어 있어야 하므로
         // image.enabled = false를 제거하고 대신 투명하게 설정
@@ -127,6 +144,8 @@ public class QubeCell : MonoBehaviour
 
     private void HandleEmptyState(bool wasCleared)
     {
+        blockId = -1; // Reset block ID when cell becomes empty
+
         if (wasCleared)
         {
             SetClearedState();
@@ -186,7 +205,13 @@ public class QubeCell : MonoBehaviour
 
     public void SetTurnTimer(int remainingTurns, bool isCenter = false, Vector2? offset = null)
     {
-        if (turnTimerText == null) return;
+        if (turnTimerText == null)
+        {
+            Debug.LogWarning($"[SetTurnTimer] turnTimerText is null at ({coordinates.x},{coordinates.y})");
+            return;
+        }
+
+        Debug.Log($"[SetTurnTimer] Cell ({coordinates.x},{coordinates.y}): remainingTurns={remainingTurns}, isCenter={isCenter}");
 
         if (remainingTurns > 0)
         {
@@ -195,6 +220,7 @@ public class QubeCell : MonoBehaviour
         else
         {
             HideTurnTimer();
+            Debug.Log($"[SetTurnTimer] Cell ({coordinates.x},{coordinates.y}): Hiding timer (remainingTurns <= 0)");
         }
     }
 
@@ -203,8 +229,12 @@ public class QubeCell : MonoBehaviour
         turnTimerText.text = remainingTurns.ToString();
         turnTimerText.enabled = true;
         turnTimerText.fontSize = isCenter ? TIMER_FONT_SIZE_CENTER : TIMER_FONT_SIZE_NORMAL;
+        turnTimerText.gameObject.SetActive(true);
 
         UpdateTimerPosition(offset);
+
+        Debug.Log($"[ShowTurnTimer] Cell ({coordinates.x},{coordinates.y}): text='{turnTimerText.text}', enabled={turnTimerText.enabled}, fontSize={turnTimerText.fontSize}, gameObject.active={turnTimerText.gameObject.activeSelf}, color={turnTimerText.color}, offset={offset}");
+        Debug.Log($"[ShowTurnTimer] TextMeshPro component: {turnTimerText.GetType().Name}, parent={turnTimerText.transform.parent.name}");
     }
 
     private void UpdateTimerPosition(Vector2? offset)

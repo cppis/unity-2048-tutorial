@@ -273,74 +273,156 @@ public void IncrementTurn()
 
 ---
 
-#### ProcessNewQuad (QubePulseSystem.cs:70-127)
+#### ProcessNewQuad (QubePulseSystem.cs:70-181)
 
-새로 감지된 영역을 처리합니다. **겹치거나 인접한** Quad와 병합을 시도합니다.
+새로 감지된 영역을 처리합니다. **Overlap(겹침)**과 **Adjacent(인접)**를 구분하여 처리합니다.
 
 ```csharp
 private void ProcessNewQuad(QubeQuad newQuad)
 {
-    // 1. 기존 Quad들과 겹치거나 인접한지 확인
-    List<QubeQuad> relatedQuads = new List<QubeQuad>();
+    // 1. 기존 Quad들과의 관계 분류
+    List<QubeQuad> overlappingQuads = new List<QubeQuad>();
+    List<QubeQuad> adjacentQuads = new List<QubeQuad>();
 
     foreach (var existingQuad in trackedQuads)
     {
-        // 겹치거나 인접한 Quad 찾기
-        if (newQuad.OverlapsWith(existingQuad) || newQuad.IsAdjacentTo(existingQuad))
+        if (newQuad.OverlapsWith(existingQuad))
         {
-            relatedQuads.Add(existingQuad);
+            overlappingQuads.Add(existingQuad);
+        }
+        else if (newQuad.IsAdjacentTo(existingQuad))
+        {
+            adjacentQuads.Add(existingQuad);
         }
     }
 
-    if (relatedQuads.Count == 0)
+    // 2. 관계에 따라 분기 처리
+    if (overlappingQuads.Count > 0)
     {
-        // 2-A. 완전히 새로운 Quad (겹치지도 인접하지도 않음)
+        ProcessOverlappingQuads(newQuad, overlappingQuads, adjacentQuads);
+    }
+    else if (adjacentQuads.Count > 0)
+    {
+        ProcessAdjacentQuads(newQuad, adjacentQuads);
+    }
+    else
+    {
+        // 완전히 새로운 Quad
         newQuad.creationTurn = globalTurnCounter;
         trackedQuads.Add(newQuad);
         Debug.Log($"→ New Quad added: {newQuad.width}x{newQuad.height}");
     }
+}
+```
+
+---
+
+##### ProcessOverlappingQuads (QubePulseSystem.cs:107-144)
+
+겹치는 Quad가 있을 때 확장 또는 포함 관계를 처리합니다.
+
+```csharp
+private void ProcessOverlappingQuads(QubeQuad newQuad, List<QubeQuad> overlappingQuads, List<QubeQuad> adjacentQuads)
+{
+    // 모든 관련 Quad들 (overlapping + adjacent)과 병합 시도
+    List<QubeQuad> allRelatedQuads = new List<QubeQuad>(overlappingQuads);
+    allRelatedQuads.AddRange(adjacentQuads);
+
+    QubeQuad mergedQuad = newQuad;
+    bool canMergeAll = true;
+
+    foreach (var quad in allRelatedQuads)
+    {
+        if (!mergedQuad.CanMergeWith(quad))
+        {
+            canMergeAll = false;
+            break;
+        }
+        mergedQuad = mergedQuad.MergeWith(quad, globalTurnCounter);
+    }
+
+    // 병합 가능하고, 결과가 새 Quad보다 크거나 같으면 교체
+    // (크거나 같음: 확장 또는 포함 관계를 모두 처리)
+    if (canMergeAll && mergedQuad.size >= newQuad.size)
+    {
+        foreach (var quad in allRelatedQuads)
+        {
+            trackedQuads.Remove(quad);
+            Debug.Log($"→ Removed old Quad: {quad.width}x{quad.height}");
+        }
+
+        trackedQuads.Add(mergedQuad);
+        Debug.Log($"→ Expanded to {mergedQuad.width}x{mergedQuad.height} Quad (turnTimer reset)");
+    }
     else
     {
-        // 2-B. 겹치거나 인접한 Quad가 있음 → 병합 시도
-        QubeQuad mergedQuad = newQuad;
-        bool canMergeAll = true;
-
-        // 모든 관련 Quad들을 하나로 병합 시도
-        foreach (var quad in relatedQuads)
-        {
-            if (!mergedQuad.CanMergeWith(quad))
-            {
-                canMergeAll = false;
-                break;
-            }
-            mergedQuad = mergedQuad.MergeWith(quad, globalTurnCounter);
-        }
-
-        if (canMergeAll && mergedQuad.size > newQuad.size)
-        {
-            // 3-A. 병합 성공 → 기존 제거 + 새 Quad 추가 (turnTimer 리셋)
-            foreach (var quad in relatedQuads)
-            {
-                trackedQuads.Remove(quad);
-                Debug.Log($"→ Removed old Quad: {quad.width}x{quad.height}");
-            }
-
-            trackedQuads.Add(mergedQuad);
-            Debug.Log($"→ Merged into larger Quad: {mergedQuad.width}x{mergedQuad.height} (turnTimer reset)");
-        }
-        else
-        {
-            // 3-B. 병합 불가 → 기존 Quad 유지
-            Debug.Log($"→ Cannot merge - keeping existing Quads");
-        }
+        Debug.Log($"→ Cannot merge overlapping Quads - keeping existing Quads");
     }
 }
 ```
 
+**핵심 로직**:
+- **조건**: `mergedQuad.size >= newQuad.size` (크거나 **같음**)
+- **이유**: 새로운 영역이 기존 Quad를 **포함**하는 경우도 처리
+- **예시**: 2×3 Quad 존재 → 3×3 영역 감지 (2×3 포함) → `9 >= 9` ✓ → 3×3으로 확장
+
+---
+
+##### ProcessAdjacentQuads (QubePulseSystem.cs:146-181)
+
+인접한 Quad만 있을 때 병합을 시도합니다.
+
+```csharp
+private void ProcessAdjacentQuads(QubeQuad newQuad, List<QubeQuad> adjacentQuads)
+{
+    // 인접한 Quad들과 병합하여 더 큰 Quad 생성 시도
+    QubeQuad mergedQuad = newQuad;
+    bool canMergeAll = true;
+
+    foreach (var quad in adjacentQuads)
+    {
+        if (!mergedQuad.CanMergeWith(quad))
+        {
+            canMergeAll = false;
+            break;
+        }
+        mergedQuad = mergedQuad.MergeWith(quad, globalTurnCounter);
+    }
+
+    // 병합해서 더 큰 Quad가 되는 경우에만 병합
+    if (canMergeAll && mergedQuad.size > newQuad.size)
+    {
+        foreach (var quad in adjacentQuads)
+        {
+            trackedQuads.Remove(quad);
+            Debug.Log($"→ Removed old Quad: {quad.width}x{quad.height}");
+        }
+
+        trackedQuads.Add(mergedQuad);
+        Debug.Log($"→ Merged adjacent Quads into {mergedQuad.width}x{mergedQuad.height} (turnTimer reset)");
+    }
+    else
+    {
+        // 병합 불가능하거나 크기가 같으면 새 Quad 추가
+        newQuad.creationTurn = globalTurnCounter;
+        trackedQuads.Add(newQuad);
+        Debug.Log($"→ New Quad added (adjacent but cannot merge): {newQuad.width}x{newQuad.height}");
+    }
+}
+```
+
+**핵심 로직**:
+- **조건**: `mergedQuad.size > newQuad.size` (크기가 **증가**해야 함)
+- **이유**: 인접한 경우 실제로 더 큰 직사각형이 되는 경우만 병합
+- **예시**: 2×2 + 인접 2×2 → 2×4 생성 (병합 성공)
+
+---
+
 **핵심 개선사항**:
-- `OverlapsWith` 뿐만 아니라 `IsAdjacentTo`도 확인
-- 겹치지 않고 인접한 블록들도 병합 대상에 포함
-- 더 큰 직사각형을 만들 수 있으면 자동으로 확장
+- **Overlap과 Adjacent를 명확히 구분**: 서로 다른 병합 조건 적용
+- **포함 관계 처리**: 새 영역이 기존 Quad를 포함하면 확장 (`>=` 조건)
+- **인접 확장**: 맞닿은 블록들도 병합 대상에 포함 (`>` 조건)
+- **전략적 게임플레이**: 기존 Quad 옆에 블록 배치로 turnTimer 리셋 가능
 
 ---
 
@@ -421,21 +503,27 @@ public bool CanMergeWith(QubeQuad other)
 
 **병합 시나리오**:
 
-**시나리오 1: 겹침 병합** (기존)
+**시나리오 1: 확장 병합** (포함 관계)
 ```
-턴 1: [■][■]     → Quad A 생성 (2×2, turnTimer=0)
-      [■][■]
-
-턴 2: [■][■][■]  → 새 블록 배치
+턴 1: [■][■][ ]  → Quad A 생성 (2×3, turnTimer=0)
+      [■][■][ ]
       [■][■][ ]
 
-      감지: 2×3 (6셀)
-      겹침: Quad A (2×2)
-      병합 가능: Yes (완전한 2×3 직사각형)
-      → Quad A 제거, Quad B(2×3, turnTimer=0) 추가 (8턴 연장!)
-```
+턴 2: [■][■][■]  → 아래에 1×3 블록 추가
+      [■][■][■]
+      [■][■][■]
 
-**시나리오 2: 인접 확장** (신규)
+      감지: 3×3 (9셀) - 기존 2×3 포함
+      겹침: Yes (Quad A의 6셀을 포함)
+      병합 결과: 3×3 (9셀)
+      조건: 9 >= 9 ✓
+      → Quad A 제거, 3×3 Quad(turnTimer=0) 추가 (8턴 연장!)
+```
+**핵심**: `size >= newQuad.size` 조건으로 포함 관계 처리 가능
+
+---
+
+**시나리오 2: 인접 확장**
 ```
 턴 1: [■][■][ ]  → Quad A 생성 (2×2, turnTimer=0)
       [■][■][ ]
@@ -447,8 +535,10 @@ public bool CanMergeWith(QubeQuad other)
       겹침: No
       인접: Yes (Quad A 오른쪽에 맞닿음)
       병합 가능: Yes (2+2=4셀, 완전한 2×3 직사각형)
-      → Quad A 제거, 새 Quad(2×3, turnTimer=0) 추가 (8턴 연장!)
+      조건: 6 > 2 ✓
+      → Quad A 제거, 2×3 Quad(turnTimer=0) 추가 (8턴 연장!)
 ```
+**핵심**: `size > newQuad.size` 조건으로 실제 확장만 병합
 
 **시나리오 3: 다중 Quad 통합**
 ```
@@ -509,7 +599,7 @@ public int GetScore()
 
 ### 시각화 시스템
 
-#### HighlightQuads (QubeQuadDetector.cs:128-188)
+#### HighlightQuads (QubeQuadDetector.cs:129-204)
 
 ```csharp
 public void HighlightQuads(List<QubeQuad> quads, int pulseInterval = 4)
@@ -529,11 +619,19 @@ public void HighlightQuads(List<QubeQuad> quads, int pulseInterval = 4)
         }
     }
 
-    // 2. Quad 셀 하이라이트
+    // 2. Quad 셀 하이라이트 (모든 Quad)
     foreach (var quad in quads)
     {
         int remainingTurns = pulseInterval - quad.turnTimer;
+        Vector2 rectCenter = quad.GetRectCenterFloat();
         Vector2Int centerCell = quad.GetCenter();
+
+        // 중앙 셀 오프셋 계산 (rect의 기하학적 중심에 타이머 배치)
+        float cellStep = 85f; // cellSize(80) + spacing(5)
+        Vector2 offset = new Vector2(
+            (rectCenter.x - centerCell.x) * cellStep,
+            (rectCenter.y - centerCell.y) * cellStep
+        );
 
         foreach (var cellPos in quad.cells)
         {
@@ -542,14 +640,15 @@ public void HighlightQuads(List<QubeQuad> quads, int pulseInterval = 4)
             {
                 // 밝게 표시 (원본 × 1.3)
                 Color highlightColor = cell.originalColor * 1.3f;
+                highlightColor.a = 1f;
                 cell.SetColor(highlightColor);
 
-                // 노란색 outline
+                // 노란색 outline (모든 셀)
                 cell.SetOutline(true, Color.yellow);
 
-                // 중앙 셀만 턴 수 표시
+                // 중앙 셀만 턴 수 표시 (오프셋 적용)
                 bool isCenter = (cellPos == centerCell);
-                cell.SetTurnTimer(isCenter ? remainingTurns : -1, isCenter);
+                cell.SetTurnTimer(isCenter ? remainingTurns : -1, isCenter, isCenter ? offset : (Vector2?)null);
             }
         }
     }
@@ -561,25 +660,38 @@ public void HighlightQuads(List<QubeQuad> quads, int pulseInterval = 4)
 | 상태 | 색상 | outline | 텍스트 |
 |------|------|---------|--------|
 | 일반 블록 | 원본 | 없음 | 없음 |
-| Quad 블록 | 원본×1.3 | 노란색 3px | 중앙 셀만 턴 수 |
+| Quad 블록 | 원본×1.3 | 노란색 3px (전체) | 중앙 셀만 턴 수 |
 | 빈 셀 | #2D3436 | 없음 | 없음 |
 | 소거된 셀 | #141A1C (8턴) | 없음 | 없음 |
+
+**핵심 사항**:
+- **모든 Quad 하이라이트**: 여러 Quad가 존재하면 모두 시각화됨 (이전 버전: 최대 크기만)
+- **모든 셀에 outline**: Quad의 모든 셀에 노란색 outline 표시 (이전 버전: 테두리만)
+- **중앙 타이머 오프셋**: 직사각형의 기하학적 중심에 타이머 배치 (홀수/짝수 크기 모두 정확)
 
 ---
 
 ### 구현 위치
 
 #### Qube 폴더 (Assets/Scripts/Qube/)
+
+##### 영역 감지 및 검증
 - **QubeQuadDetector.cs:8-45**: `DetectQuads()` - 영역 감지
 - **QubeQuadDetector.cs:47-82**: `FloodFill()` - BFS 탐색
 - **QubeQuadDetector.cs:84-126**: `IsValidQuad()` - 검증
-- **QubeQuadDetector.cs:128-188**: `HighlightQuads()` - 시각화
+- **QubeQuadDetector.cs:129-204**: `HighlightQuads()` - 시각화
+
+##### 턴 및 병합 로직
 - **QubePulseSystem.cs:22-68**: `IncrementTurn()` - 턴 처리
-- **QubePulseSystem.cs:70-127**: `ProcessNewQuad()` - 병합 로직 (겹침 + 인접 검사)
-- **QubePulseSystem.cs:129-160**: `RemoveQuads()` - 소거 처리
+- **QubePulseSystem.cs:70-105**: `ProcessNewQuad()` - 관계 분류 및 분기 (신규 구조)
+- **QubePulseSystem.cs:107-144**: `ProcessOverlappingQuads()` - 겹침 처리 (포함 관계, `>=` 조건)
+- **QubePulseSystem.cs:146-181**: `ProcessAdjacentQuads()` - 인접 처리 (확장 전용, `>` 조건)
+- **QubePulseSystem.cs:183-215**: `RemoveQuads()` - 소거 처리
+
+##### Quad 클래스 메서드
 - **QubeQuad.cs:43-57**: `GetScore()` - 점수 계산
 - **QubeQuad.cs:76-84**: `OverlapsWith()` - 겹침 확인
-- **QubeQuad.cs:87-109**: `IsAdjacentTo()` - 인접 확인 (신규)
+- **QubeQuad.cs:87-109**: `IsAdjacentTo()` - 인접 확인
 - **QubeQuad.cs:112-133**: `CanMergeWith()` - 병합 가능 여부
 - **QubeQuad.cs:136-145**: `MergeWith()` - 병합 실행
 

@@ -108,12 +108,12 @@ public class QubeGrid : MonoBehaviour
         return cell != null && cell.isOccupied;
     }
 
-    public void SetCellOccupied(Vector2Int coords, bool occupied, Color color, bool wasCleared = false)
+    public void SetCellOccupied(Vector2Int coords, bool occupied, Color color, bool wasCleared = false, int blockId = -1)
     {
         QubeCell cell = GetCell(coords);
         if (cell != null)
         {
-            cell.SetOccupied(occupied, color, wasCleared);
+            cell.SetOccupied(occupied, color, wasCleared, blockId);
         }
 
         if (!occupied && wasCleared)
