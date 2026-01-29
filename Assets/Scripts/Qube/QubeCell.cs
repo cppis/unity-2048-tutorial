@@ -4,65 +4,88 @@ using TMPro;
 
 public class QubeCell : MonoBehaviour
 {
+    private const float ANCHOR_CENTER = 0.5f;
+    private const float TIMER_TEXT_SIZE = 60f;
+    private const int TIMER_FONT_SIZE_NORMAL = 36;
+    private const int TIMER_FONT_SIZE_CENTER = 72;
+    private const int CLEAR_TIMER_DURATION = 8;
+    private const float OUTLINE_DISTANCE = 3f;
+
+    private static readonly Color EMPTY_COLOR = new Color(0.176f, 0.204f, 0.212f, 1f);
+    private static readonly Color CLEARED_COLOR = new Color(0.08f, 0.1f, 0.11f, 1f);
+    private static readonly Vector2 OUTLINE_EFFECT_DISTANCE = new Vector2(OUTLINE_DISTANCE, OUTLINE_DISTANCE);
+
     public Vector2Int coordinates;
     public bool isOccupied;
     public Color cellColor;
-    public Color originalColor; // 원본 색상 저장 (하이라이트용)
-    public int clearTimer = 0; // 소거 후 경과 턴 (4턴 동안 어두운 색 유지)
+    public Color originalColor;
+    public int clearTimer = 0;
 
     private Image image;
     private Outline outline;
     private TextMeshProUGUI turnTimerText;
 
-    // 색상 상수
-    private static readonly Color emptyColor = new Color(0.176f, 0.204f, 0.212f, 1f); // 빈 셀 (#2D3436)
-    private static readonly Color clearedColor = new Color(0.08f, 0.1f, 0.11f, 1f); // 소거된 셀 (더 어두움)
-
     private void Awake()
     {
-        image = GetComponent<Image>();
-
-        // Outline 컴포넌트 추가 (없으면 생성)
-        outline = GetComponent<Outline>();
-        if (outline == null)
-        {
-            outline = gameObject.AddComponent<Outline>();
-        }
-
-        // 기본 외곽선 설정 (비활성화 상태)
-        outline.effectColor = Color.yellow;
-        outline.effectDistance = new Vector2(3, 3);
-        outline.enabled = false;
-
-        // TurnTimer 텍스트 생성
+        InitializeComponents();
         CreateTurnTimerText();
+    }
+
+    private void InitializeComponents()
+    {
+        image = GetComponent<Image>();
+        outline = GetOrAddComponent<Outline>();
+        SetupOutline();
+    }
+
+    private T GetOrAddComponent<T>() where T : Component
+    {
+        T component = GetComponent<T>();
+        if (component == null)
+        {
+            component = gameObject.AddComponent<T>();
+        }
+        return component;
+    }
+
+    private void SetupOutline()
+    {
+        outline.effectColor = Color.yellow;
+        outline.effectDistance = OUTLINE_EFFECT_DISTANCE;
+        outline.enabled = false;
     }
 
     private void CreateTurnTimerText()
     {
-        // 자식 GameObject로 텍스트 생성
         GameObject textObj = new GameObject("TurnTimerText");
         textObj.transform.SetParent(transform);
 
-        // RectTransform 설정
+        RectTransform rectTransform = SetupTimerRectTransform(textObj);
+        turnTimerText = SetupTimerTextComponent(textObj);
+    }
+
+    private RectTransform SetupTimerRectTransform(GameObject textObj)
+    {
         RectTransform rectTransform = textObj.AddComponent<RectTransform>();
-        rectTransform.anchorMin = new Vector2(0.5f, 0.5f);
-        rectTransform.anchorMax = new Vector2(0.5f, 0.5f);
-        rectTransform.pivot = new Vector2(0.5f, 0.5f);
+        rectTransform.anchorMin = new Vector2(ANCHOR_CENTER, ANCHOR_CENTER);
+        rectTransform.anchorMax = new Vector2(ANCHOR_CENTER, ANCHOR_CENTER);
+        rectTransform.pivot = new Vector2(ANCHOR_CENTER, ANCHOR_CENTER);
         rectTransform.anchoredPosition = Vector2.zero;
-        rectTransform.sizeDelta = new Vector2(60, 60);
+        rectTransform.sizeDelta = new Vector2(TIMER_TEXT_SIZE, TIMER_TEXT_SIZE);
         rectTransform.localScale = Vector3.one;
+        return rectTransform;
+    }
 
-        // TextMeshProUGUI 컴포넌트 추가
-        turnTimerText = textObj.AddComponent<TextMeshProUGUI>();
-        turnTimerText.fontSize = 36;
-        turnTimerText.fontStyle = FontStyles.Bold;
-        turnTimerText.alignment = TextAlignmentOptions.Center;
-        turnTimerText.color = Color.white;
-        turnTimerText.raycastTarget = false;
-
-        // 기본적으로 비활성화
-        turnTimerText.enabled = false;
+    private TextMeshProUGUI SetupTimerTextComponent(GameObject textObj)
+    {
+        TextMeshProUGUI textComponent = textObj.AddComponent<TextMeshProUGUI>();
+        textComponent.fontSize = TIMER_FONT_SIZE_NORMAL;
+        textComponent.fontStyle = FontStyles.Bold;
+        textComponent.alignment = TextAlignmentOptions.Center;
+        textComponent.color = Color.white;
+        textComponent.raycastTarget = false;
+        textComponent.enabled = false;
+        return textComponent;
     }
 
     public void SetColor(Color color)
@@ -77,37 +100,61 @@ public class QubeCell : MonoBehaviour
     public void SetOccupied(bool occupied, Color color, bool wasCleared = false)
     {
         isOccupied = occupied;
+
         if (occupied)
         {
-            originalColor = color; // 원본 색상 저장
-            SetColor(color);
-            clearTimer = 0; // 블록 배치 시 clearTimer 리셋
+            HandleOccupiedState(color);
         }
         else
         {
-            // 빈 셀
-            if (wasCleared)
-            {
-                // 소거된 셀: 8턴 동안 더 어두운 색 (테스트용)
-                clearTimer = 8;
-                originalColor = clearedColor;
-                SetColor(clearedColor);
-            }
-            else
-            {
-                // 일반 빈 셀
-                originalColor = emptyColor;
-                SetColor(emptyColor);
-            }
-
-            // 비어있으면 외곽선도 비활성화
-            SetOutline(false);
-            // 턴 타이머 텍스트도 숨김
-            SetTurnTimer(-1);
+            HandleEmptyState(wasCleared);
         }
     }
 
-    // 매 턴마다 호출하여 clearTimer 감소 및 색상 업데이트
+    private void HandleOccupiedState(Color color)
+    {
+        originalColor = color;
+        clearTimer = 0;
+
+        if (image != null)
+        {
+            image.enabled = false;
+        }
+    }
+
+    private void HandleEmptyState(bool wasCleared)
+    {
+        if (wasCleared)
+        {
+            SetClearedState();
+        }
+        else
+        {
+            SetNormalEmptyState();
+        }
+
+        if (image != null)
+        {
+            image.enabled = true;
+        }
+
+        SetOutline(false);
+        SetTurnTimer(-1);
+    }
+
+    private void SetClearedState()
+    {
+        clearTimer = CLEAR_TIMER_DURATION;
+        originalColor = CLEARED_COLOR;
+        SetColor(CLEARED_COLOR);
+    }
+
+    private void SetNormalEmptyState()
+    {
+        originalColor = EMPTY_COLOR;
+        SetColor(EMPTY_COLOR);
+    }
+
     public void UpdateClearTimer()
     {
         if (clearTimer > 0)
@@ -116,40 +163,55 @@ public class QubeCell : MonoBehaviour
 
             if (clearTimer == 0)
             {
-                // clearTimer가 0이 되면 일반 빈 셀 색상으로 복구
-                originalColor = emptyColor;
-                SetColor(emptyColor);
+                originalColor = EMPTY_COLOR;
+                SetColor(EMPTY_COLOR);
             }
         }
     }
 
     public void SetOutline(bool enabled, Color? outlineColor = null)
     {
-        if (outline != null)
+        if (outline == null) return;
+
+        outline.enabled = enabled;
+
+        if (enabled && outlineColor.HasValue)
         {
-            outline.enabled = enabled;
-            if (enabled && outlineColor.HasValue)
-            {
-                outline.effectColor = outlineColor.Value;
-            }
+            outline.effectColor = outlineColor.Value;
         }
     }
 
-    public void SetTurnTimer(int remainingTurns, bool isCenter = false)
+    public void SetTurnTimer(int remainingTurns, bool isCenter = false, Vector2? offset = null)
     {
         if (turnTimerText == null) return;
 
         if (remainingTurns > 0)
         {
-            turnTimerText.text = remainingTurns.ToString();
-            turnTimerText.enabled = true;
-
-            // 중앙 셀이면 2배 크기 (72), 아니면 기본 크기 (36)
-            turnTimerText.fontSize = isCenter ? 72 : 36;
+            ShowTurnTimer(remainingTurns, isCenter, offset);
         }
         else
         {
-            turnTimerText.enabled = false;
+            HideTurnTimer();
         }
+    }
+
+    private void ShowTurnTimer(int remainingTurns, bool isCenter, Vector2? offset)
+    {
+        turnTimerText.text = remainingTurns.ToString();
+        turnTimerText.enabled = true;
+        turnTimerText.fontSize = isCenter ? TIMER_FONT_SIZE_CENTER : TIMER_FONT_SIZE_NORMAL;
+
+        UpdateTimerPosition(offset);
+    }
+
+    private void UpdateTimerPosition(Vector2? offset)
+    {
+        RectTransform textRect = turnTimerText.GetComponent<RectTransform>();
+        textRect.anchoredPosition = offset ?? Vector2.zero;
+    }
+
+    private void HideTurnTimer()
+    {
+        turnTimerText.enabled = false;
     }
 }

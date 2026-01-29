@@ -4,13 +4,30 @@ using System.Collections.Generic;
 
 public class QubeBlock : MonoBehaviour
 {
+    private const float ANCHOR_CENTER = 0.5f;
+    private const int SPAWN_Y_POSITION = 1;
+    private const int ROTATION_COUNT = 4;
+
+    private static readonly Vector2Int[] WALL_KICK_OFFSETS = new Vector2Int[]
+    {
+        new Vector2Int(0, 0),   // 원래 위치
+        new Vector2Int(-1, 0),  // 왼쪽
+        new Vector2Int(1, 0),   // 오른쪽
+        new Vector2Int(0, 1),   // 위
+        new Vector2Int(0, -1),  // 아래
+        new Vector2Int(-1, 1),  // 왼쪽 위
+        new Vector2Int(1, 1),   // 오른쪽 위
+        new Vector2Int(-1, -1), // 왼쪽 아래
+        new Vector2Int(1, -1)   // 오른쪽 아래
+    };
+
     public QubeBlockShape shape;
     public Vector2Int position;
     public QubeGrid grid;
 
     private Vector2Int[] currentCells;
     private List<GameObject> cellObjects = new List<GameObject>();
-    private int rotation = 0; // 0, 1, 2, 3 (0도, 90도, 180도, 270도)
+    private int rotation = 0;
 
     public void Initialize(QubeBlockShape blockShape, QubeGrid qubeGrid)
     {
@@ -18,60 +35,68 @@ public class QubeBlock : MonoBehaviour
         grid = qubeGrid;
         currentCells = (Vector2Int[])shape.cells.Clone();
 
-        // 블록을 그리드 중앙 하단에서 생성 (y=1로 변경)
-        position = new Vector2Int(QubeGrid.WIDTH / 2 - 1, 1);
-
-        // RectTransform 초기화 (Grid와 같은 좌표계 사용)
-        RectTransform rectTransform = GetComponent<RectTransform>();
-        rectTransform.anchorMin = new Vector2(0.5f, 0.5f);
-        rectTransform.anchorMax = new Vector2(0.5f, 0.5f);
-        rectTransform.pivot = new Vector2(0.5f, 0.5f);
-        rectTransform.anchoredPosition = Vector2.zero;
-
-        Debug.Log($"Block initialized: {shape.blockName} at {position}, cells: {string.Join(", ", currentCells)}");
-        Debug.Log($"Block RectTransform - localScale: {rectTransform.localScale}, lossyScale: {rectTransform.lossyScale}");
-
+        position = CalculateSpawnPosition();
+        InitializeRectTransform();
         CreateVisuals();
+    }
+
+    private Vector2Int CalculateSpawnPosition()
+    {
+        return new Vector2Int(QubeGrid.WIDTH / 2 - 1, SPAWN_Y_POSITION);
+    }
+
+    private void InitializeRectTransform()
+    {
+        RectTransform rectTransform = GetComponent<RectTransform>();
+        rectTransform.anchorMin = new Vector2(ANCHOR_CENTER, ANCHOR_CENTER);
+        rectTransform.anchorMax = new Vector2(ANCHOR_CENTER, ANCHOR_CENTER);
+        rectTransform.pivot = new Vector2(ANCHOR_CENTER, ANCHOR_CENTER);
+        rectTransform.anchoredPosition = Vector2.zero;
     }
 
     private void CreateVisuals()
     {
-        // 기존 시각 요소 제거
+        ClearExistingVisuals();
+
+        foreach (var cell in currentCells)
+        {
+            GameObject cellObj = CreateCellVisual();
+            cellObjects.Add(cellObj);
+        }
+
+        UpdateVisuals();
+    }
+
+    private void ClearExistingVisuals()
+    {
         foreach (var obj in cellObjects)
         {
             Destroy(obj);
         }
         cellObjects.Clear();
+    }
 
-        Debug.Log($"Creating block visuals - Grid cellSize: {grid.cellSize}, spacing: {grid.spacing}");
+    private GameObject CreateCellVisual()
+    {
+        GameObject cellObj = new GameObject("BlockCell");
+        cellObj.transform.SetParent(transform);
 
-        // 새로운 시각 요소 생성
-        foreach (var cell in currentCells)
-        {
-            GameObject cellObj = new GameObject("BlockCell");
-            cellObj.transform.SetParent(transform);
+        Image image = cellObj.AddComponent<Image>();
+        image.color = shape.blockColor;
+        image.raycastTarget = false;
 
-            Image image = cellObj.AddComponent<Image>();
-            image.color = shape.blockColor;
-            image.raycastTarget = false; // 불필요한 raycast 비활성화
+        SetupCellRectTransform(cellObj.GetComponent<RectTransform>());
 
-            RectTransform rect = cellObj.GetComponent<RectTransform>();
+        return cellObj;
+    }
 
-            // 앵커를 중앙으로 설정
-            rect.anchorMin = new Vector2(0.5f, 0.5f);
-            rect.anchorMax = new Vector2(0.5f, 0.5f);
-            rect.pivot = new Vector2(0.5f, 0.5f);
-
-            // 훨씬 작게 설정하여 테스트 (50x50)
-            float blockCellSize = 50f;
-            rect.sizeDelta = new Vector2(blockCellSize, blockCellSize);
-
-            cellObjects.Add(cellObj);
-
-            Debug.Log($"BlockCell - sizeDelta: {rect.sizeDelta}, lossyScale: {cellObj.transform.lossyScale}, rect size: {rect.rect.size}");
-        }
-
-        UpdateVisuals();
+    private void SetupCellRectTransform(RectTransform rect)
+    {
+        rect.anchorMin = new Vector2(ANCHOR_CENTER, ANCHOR_CENTER);
+        rect.anchorMax = new Vector2(ANCHOR_CENTER, ANCHOR_CENTER);
+        rect.pivot = new Vector2(ANCHOR_CENTER, ANCHOR_CENTER);
+        rect.sizeDelta = new Vector2(grid.cellSize, grid.cellSize);
+        rect.localScale = Vector3.one;
     }
 
     private void UpdateVisuals()
@@ -82,40 +107,39 @@ public class QubeBlock : MonoBehaviour
         {
             Vector2Int globalPos = position + currentCells[i];
             RectTransform rect = cellObjects[i].GetComponent<RectTransform>();
-
-            float xPos = (globalPos.x - QubeGrid.WIDTH / 2f + 0.5f) * cellStep;
-            float yPos = (globalPos.y - QubeGrid.HEIGHT / 2f + 0.5f) * cellStep;
-            rect.anchoredPosition = new Vector2(xPos, yPos);
+            rect.anchoredPosition = CalculateCellPosition(globalPos, cellStep);
         }
+    }
+
+    private Vector2 CalculateCellPosition(Vector2Int gridPos, float cellStep)
+    {
+        float xPos = (gridPos.x - QubeGrid.WIDTH / 2f + ANCHOR_CENTER) * cellStep;
+        float yPos = (gridPos.y - QubeGrid.HEIGHT / 2f + ANCHOR_CENTER) * cellStep;
+        return new Vector2(xPos, yPos);
     }
 
     public bool CanMove(Vector2Int direction)
     {
         Vector2Int newPos = position + direction;
-
-        // 이동은 그리드 범위 내에서만 체크 (점유 여부는 무시)
-        foreach (var cell in currentCells)
-        {
-            Vector2Int checkPos = newPos + cell;
-            if (!grid.IsValidPosition(checkPos))
-            {
-                return false;
-            }
-        }
-
-        return true;
+        return IsPositionValid(newPos, currentCells, checkOccupancy: false);
     }
 
     public bool CanPlace()
     {
-        // 배치는 모든 셀이 비어있어야 함
-        foreach (var cell in currentCells)
+        return IsPositionValid(position, currentCells, checkOccupancy: true);
+    }
+
+    private bool IsPositionValid(Vector2Int pos, Vector2Int[] cells, bool checkOccupancy)
+    {
+        foreach (var cell in cells)
         {
-            Vector2Int checkPos = position + cell;
-            if (!grid.IsValidPosition(checkPos) || grid.IsCellOccupied(checkPos))
-            {
+            Vector2Int checkPos = pos + cell;
+
+            if (!grid.IsValidPosition(checkPos))
                 return false;
-            }
+
+            if (checkOccupancy && grid.IsCellOccupied(checkPos))
+                return false;
         }
 
         return true;
@@ -127,88 +151,68 @@ public class QubeBlock : MonoBehaviour
         {
             position += direction;
             UpdateVisuals();
-            Debug.Log($"Block moved to {position}, canPlace: {CanPlace()}");
-        }
-        else
-        {
-            Debug.Log($"Cannot move from {position} in direction {direction} - out of bounds");
         }
     }
 
     public void Rotate(bool clockwise = true)
+    {
+        Vector2Int[] rotatedCells = CalculateRotatedCells(clockwise);
+
+        if (TryRotateWithWallKick(rotatedCells, clockwise))
+        {
+            currentCells = rotatedCells;
+            CreateVisuals();
+        }
+    }
+
+    private Vector2Int[] CalculateRotatedCells(bool clockwise)
     {
         Vector2Int[] rotatedCells = new Vector2Int[currentCells.Length];
 
         for (int i = 0; i < currentCells.Length; i++)
         {
             Vector2Int cell = currentCells[i];
-            if (clockwise)
-            {
-                // 시계방향 90도 회전: (x, y) -> (y, -x)
-                rotatedCells[i] = new Vector2Int(cell.y, -cell.x);
-            }
-            else
-            {
-                // 반시계방향 90도 회전: (x, y) -> (-y, x)
-                rotatedCells[i] = new Vector2Int(-cell.y, cell.x);
-            }
+            rotatedCells[i] = clockwise
+                ? new Vector2Int(cell.y, -cell.x)   // 시계방향
+                : new Vector2Int(-cell.y, cell.x);  // 반시계방향
         }
 
-        // Wall Kick: 회전 후 벽에 막히면 위치를 조정하여 회전 시도
-        Vector2Int[] kickOffsets = new Vector2Int[]
-        {
-            new Vector2Int(0, 0),   // 원래 위치
-            new Vector2Int(-1, 0),  // 왼쪽
-            new Vector2Int(1, 0),   // 오른쪽
-            new Vector2Int(0, 1),   // 위
-            new Vector2Int(0, -1),  // 아래
-            new Vector2Int(-1, 1),  // 왼쪽 위
-            new Vector2Int(1, 1),   // 오른쪽 위
-            new Vector2Int(-1, -1), // 왼쪽 아래
-            new Vector2Int(1, -1)   // 오른쪽 아래
-        };
+        return rotatedCells;
+    }
 
-        // 각 오프셋을 시도하여 회전 가능한 위치 찾기
-        foreach (var offset in kickOffsets)
+    private bool TryRotateWithWallKick(Vector2Int[] rotatedCells, bool clockwise)
+    {
+        foreach (var offset in WALL_KICK_OFFSETS)
         {
             Vector2Int testPos = position + offset;
-            bool canRotate = true;
 
-            // 회전 후 위치가 유효한지 확인 (점유 여부는 무시)
-            foreach (var cell in rotatedCells)
+            if (IsPositionValid(testPos, rotatedCells, checkOccupancy: false))
             {
-                Vector2Int checkPos = testPos + cell;
-                if (!grid.IsValidPosition(checkPos))
-                {
-                    canRotate = false;
-                    break;
-                }
-            }
-
-            if (canRotate)
-            {
-                // 회전 성공
                 position = testPos;
-                currentCells = rotatedCells;
-                rotation = (rotation + (clockwise ? 1 : 3)) % 4;
-                CreateVisuals();
-                return;
+                rotation = (rotation + (clockwise ? 1 : 3)) % ROTATION_COUNT;
+                return true;
             }
         }
 
-        // 모든 오프셋 시도 후에도 회전 불가
-        Debug.Log("Cannot rotate - no valid position found");
+        return false;
     }
 
     public void Place()
     {
-        foreach (var cell in currentCells)
+        Transform placedContainer = grid.GetPlacedBlocksContainer();
+
+        for (int i = 0; i < currentCells.Length; i++)
         {
-            Vector2Int globalPos = position + cell;
+            Vector2Int globalPos = position + currentCells[i];
+
             grid.SetCellOccupied(globalPos, true, shape.blockColor);
+
+            GameObject cellObj = cellObjects[i];
+            cellObj.name = $"PlacedCell_{globalPos.x}_{globalPos.y}";
+            cellObj.transform.SetParent(placedContainer, worldPositionStays: true);
         }
 
-        // 블록 제거
+        cellObjects.Clear();
         Destroy(gameObject);
     }
 

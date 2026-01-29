@@ -8,9 +8,13 @@ public class QubePulseSystem : MonoBehaviour
     public QubeGrid grid;
     public QubeQuadDetector quadDetector;
 
+    private const int PULSE_INTERVAL = 8;
+    private const float BONUS_MULTIPLIER_TWO = 1.5f;
+    private const float BONUS_MULTIPLIER_THREE_PLUS = 2.0f;
+    private const float REMOVAL_DELAY = 0.3f;
+
     private int globalTurnCounter = 0;
-    private int pulseInterval = 8; // 8턴마다 펄스 (테스트용)
-    private List<QubeQuad> trackedQuads = new List<QubeQuad>(); // 추적 중인 Quad들
+    private List<QubeQuad> trackedQuads = new List<QubeQuad>();
 
     public delegate void OnPulseDelegate(int score);
     public event OnPulseDelegate OnPulse;
@@ -50,16 +54,16 @@ public class QubePulseSystem : MonoBehaviour
             ProcessNewQuad(newQuad);
         }
 
-        // 4. turnTimer가 4인 Quad들 소거
-        List<QubeQuad> quadsToRemove = trackedQuads.Where(q => q.turnTimer >= pulseInterval).ToList();
+        // 4. turnTimer가 pulseInterval인 Quad들 소거
+        List<QubeQuad> quadsToRemove = trackedQuads.Where(q => q.turnTimer >= PULSE_INTERVAL).ToList();
         if (quadsToRemove.Count > 0)
         {
             Debug.Log($"Removing {quadsToRemove.Count} quads that reached 4 turns");
             StartCoroutine(RemoveQuads(quadsToRemove));
         }
 
-        // 5. 현재 활성화된 Quad들 하이라이트 (pulseInterval 전달)
-        quadDetector.HighlightQuads(trackedQuads, pulseInterval);
+        // 5. 현재 활성화된 Quad들 하이라이트 (PULSE_INTERVAL 전달)
+        quadDetector.HighlightQuads(trackedQuads, PULSE_INTERVAL);
         Debug.Log($"=== Turn {globalTurnCounter} Ended: {trackedQuads.Count} active quads ===\n");
     }
 
@@ -144,7 +148,7 @@ public class QubePulseSystem : MonoBehaviour
         // 동시 소거 보너스
         if (quadsToRemove.Count >= 2)
         {
-            float multiplier = quadsToRemove.Count >= 3 ? 2.0f : 1.5f;
+            float multiplier = quadsToRemove.Count >= 3 ? BONUS_MULTIPLIER_THREE_PLUS : BONUS_MULTIPLIER_TWO;
             totalScore = Mathf.RoundToInt(totalScore * multiplier);
             Debug.Log($"Bonus applied! x{multiplier}");
         }
@@ -152,7 +156,7 @@ public class QubePulseSystem : MonoBehaviour
         // 점수 이벤트 발생
         OnPulse?.Invoke(totalScore);
 
-        yield return new WaitForSeconds(0.3f);
+        yield return new WaitForSeconds(REMOVAL_DELAY);
     }
 
     public int GetTurnCounter()
@@ -162,7 +166,7 @@ public class QubePulseSystem : MonoBehaviour
 
     public int GetPulseInterval()
     {
-        return pulseInterval;
+        return PULSE_INTERVAL;
     }
 
     public List<QubeQuad> GetActiveQuads()

@@ -151,8 +151,20 @@ public class QubeQuadDetector : MonoBehaviour
             // 남은 턴 수 계산
             int remainingTurns = pulseInterval - quad.turnTimer;
 
-            // Quad의 중앙 위치 계산
-            Vector2Int centerPos = quad.GetCenter();
+            // Quad의 rect 실제 중앙 위치 계산 (float)
+            Vector2 rectCenter = quad.GetRectCenterFloat();
+
+            // 중앙에 가장 가까운 셀 찾기
+            Vector2Int centerCell = quad.GetCenter();
+
+            // cellSize + spacing (QubeGrid에서 85)
+            float cellStep = 80f + 5f;
+
+            // 중앙 셀로부터 rect 중앙까지의 오프셋 계산
+            Vector2 offset = new Vector2(
+                (rectCenter.x - centerCell.x) * cellStep,
+                (rectCenter.y - centerCell.y) * cellStep
+            );
 
             foreach (var cellPos in quad.cells)
             {
@@ -167,9 +179,9 @@ public class QubeQuadDetector : MonoBehaviour
                     // 외곽선 활성화 (노란색)
                     cell.SetOutline(true, Color.yellow);
 
-                    // 중앙 셀만 큰 폰트로 턴 수 표시
-                    bool isCenter = (cellPos == centerPos);
-                    cell.SetTurnTimer(isCenter ? remainingTurns : -1, isCenter);
+                    // 중앙 셀에만 턴 수 표시 (오프셋 적용하여 rect 중앙에 위치)
+                    bool isCenter = (cellPos == centerCell);
+                    cell.SetTurnTimer(isCenter ? remainingTurns : -1, isCenter, isCenter ? offset : (Vector2?)null);
                 }
             }
         }

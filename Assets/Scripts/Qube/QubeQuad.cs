@@ -66,6 +66,12 @@ public class QubeQuad
         return new Vector2Int((minX + maxX) / 2, (minY + maxY) / 2);
     }
 
+    // Rect의 실제 중앙 좌표 (float)
+    public Vector2 GetRectCenterFloat()
+    {
+        return new Vector2((minX + maxX) / 2f, (minY + maxY) / 2f);
+    }
+
     // 다른 Quad와 겹치는지 확인
     public bool OverlapsWith(QubeQuad other)
     {
