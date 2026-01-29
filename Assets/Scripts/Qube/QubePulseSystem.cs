@@ -69,33 +69,34 @@ public class QubePulseSystem : MonoBehaviour
 
     private void ProcessNewQuad(QubeQuad newQuad)
     {
-        // 기존 Quad들과 겹치거나 병합 가능한지 확인
-        List<QubeQuad> overlappingQuads = new List<QubeQuad>();
+        // 기존 Quad들과 겹치거나 인접한지 확인
+        List<QubeQuad> relatedQuads = new List<QubeQuad>();
 
         foreach (var existingQuad in trackedQuads)
         {
-            if (newQuad.OverlapsWith(existingQuad))
+            // 겹치거나 인접한 Quad 찾기
+            if (newQuad.OverlapsWith(existingQuad) || newQuad.IsAdjacentTo(existingQuad))
             {
-                overlappingQuads.Add(existingQuad);
+                relatedQuads.Add(existingQuad);
             }
         }
 
-        if (overlappingQuads.Count == 0)
+        if (relatedQuads.Count == 0)
         {
-            // 완전히 새로운 Quad
+            // 완전히 새로운 Quad (겹치지도 인접하지도 않음)
             newQuad.creationTurn = globalTurnCounter;
             trackedQuads.Add(newQuad);
             Debug.Log($"→ New Quad added: {newQuad.width}x{newQuad.height} at ({newQuad.minX},{newQuad.minY})");
         }
         else
         {
-            // 겹치는 Quad가 있음 - 병합 시도
+            // 겹치거나 인접한 Quad가 있음 - 병합 시도
             QubeQuad mergedQuad = newQuad;
-            List<QubeQuad> quadsToMerge = new List<QubeQuad>(overlappingQuads);
+            List<QubeQuad> quadsToMerge = new List<QubeQuad>(relatedQuads);
 
-            // 모든 겹치는 Quad들을 하나로 병합 시도
+            // 모든 관련 Quad들을 하나로 병합 시도
             bool canMergeAll = true;
-            foreach (var quad in overlappingQuads)
+            foreach (var quad in relatedQuads)
             {
                 if (!mergedQuad.CanMergeWith(quad))
                 {
@@ -108,7 +109,7 @@ public class QubePulseSystem : MonoBehaviour
             if (canMergeAll && mergedQuad.size > newQuad.size)
             {
                 // 더 큰 Quad로 병합 성공
-                foreach (var quad in overlappingQuads)
+                foreach (var quad in relatedQuads)
                 {
                     trackedQuads.Remove(quad);
                     Debug.Log($"→ Removed old Quad: {quad.width}x{quad.height}");

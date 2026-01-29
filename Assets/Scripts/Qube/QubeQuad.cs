@@ -83,6 +83,31 @@ public class QubeQuad
         return false;
     }
 
+    // 다른 Quad와 인접해 있는지 확인 (상하좌우로 맞닿아 있음)
+    public bool IsAdjacentTo(QubeQuad other)
+    {
+        // 4방향 (상하좌우)
+        Vector2Int[] directions = {
+            new Vector2Int(0, 1),   // 위
+            new Vector2Int(0, -1),  // 아래
+            new Vector2Int(1, 0),   // 오른쪽
+            new Vector2Int(-1, 0)   // 왼쪽
+        };
+
+        // 이 Quad의 각 셀에 대해 인접 셀이 다른 Quad에 포함되는지 확인
+        foreach (var cell in cells)
+        {
+            foreach (var dir in directions)
+            {
+                Vector2Int adjacentCell = cell + dir;
+                if (other.Contains(adjacentCell))
+                    return true;
+            }
+        }
+
+        return false;
+    }
+
     // 다른 Quad와 병합 가능한지 확인 (합쳤을 때 직사각형이 되는가?)
     public bool CanMergeWith(QubeQuad other)
     {

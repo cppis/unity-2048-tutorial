@@ -116,9 +116,12 @@ public class QubeCell : MonoBehaviour
         originalColor = color;
         clearTimer = 0;
 
+        // Outline이 작동하려면 Image가 활성화되어 있어야 하므로
+        // image.enabled = false를 제거하고 대신 투명하게 설정
         if (image != null)
         {
-            image.enabled = false;
+            image.enabled = true;
+            image.color = new Color(0, 0, 0, 0); // 완전 투명
         }
     }
 
