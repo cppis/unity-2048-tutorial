@@ -9,11 +9,10 @@ public class QubeCell : MonoBehaviour
     private const int TIMER_FONT_SIZE_NORMAL = 36;
     private const int TIMER_FONT_SIZE_CENTER = 72;
     private const int CLEAR_TIMER_DURATION = 8;
-    private const float OUTLINE_DISTANCE = 3f;
+    private const float OUTLINE_THICKNESS = 3f; // 외곽선 두께
 
     private static readonly Color EMPTY_COLOR = new Color(0.176f, 0.204f, 0.212f, 1f);
     private static readonly Color CLEARED_COLOR = new Color(0.08f, 0.1f, 0.11f, 1f);
-    private static readonly Vector2 OUTLINE_EFFECT_DISTANCE = new Vector2(OUTLINE_DISTANCE, OUTLINE_DISTANCE);
 
     public Vector2Int coordinates;
     public bool isOccupied;
@@ -23,37 +22,62 @@ public class QubeCell : MonoBehaviour
     public int blockId = -1; // -1 means no block assigned
 
     private Image image;
-    private Outline outline;
     private TextMeshProUGUI turnTimerText;
+
+    // 4개의 변 (상하좌우)
+    private Image topBorder;
+    private Image bottomBorder;
+    private Image leftBorder;
+    private Image rightBorder;
 
     private void Awake()
     {
         InitializeComponents();
+        CreateBorders();
         CreateTurnTimerText();
     }
 
     private void InitializeComponents()
     {
         image = GetComponent<Image>();
-        outline = GetOrAddComponent<Outline>();
-        SetupOutline();
     }
 
-    private T GetOrAddComponent<T>() where T : Component
+    private void CreateBorders()
     {
-        T component = GetComponent<T>();
-        if (component == null)
-        {
-            component = gameObject.AddComponent<T>();
-        }
-        return component;
+        // 셀의 크기를 가져옴 (RectTransform 사용)
+        RectTransform cellRect = GetComponent<RectTransform>();
+        Vector2 cellSize = cellRect.sizeDelta;
+
+        // 4개의 변 생성
+        topBorder = CreateBorderImage("TopBorder", cellSize.x, OUTLINE_THICKNESS, 0, cellSize.y / 2);
+        bottomBorder = CreateBorderImage("BottomBorder", cellSize.x, OUTLINE_THICKNESS, 0, -cellSize.y / 2);
+        leftBorder = CreateBorderImage("LeftBorder", OUTLINE_THICKNESS, cellSize.y, -cellSize.x / 2, 0);
+        rightBorder = CreateBorderImage("RightBorder", OUTLINE_THICKNESS, cellSize.y, cellSize.x / 2, 0);
+
+        // 초기에는 모두 비활성화
+        topBorder.enabled = false;
+        bottomBorder.enabled = false;
+        leftBorder.enabled = false;
+        rightBorder.enabled = false;
     }
 
-    private void SetupOutline()
+    private Image CreateBorderImage(string name, float width, float height, float xPos, float yPos)
     {
-        outline.effectColor = Color.yellow;
-        outline.effectDistance = OUTLINE_EFFECT_DISTANCE;
-        outline.enabled = false;
+        GameObject borderObj = new GameObject(name);
+        borderObj.transform.SetParent(transform, false);
+
+        RectTransform rectTransform = borderObj.AddComponent<RectTransform>();
+        rectTransform.anchorMin = new Vector2(ANCHOR_CENTER, ANCHOR_CENTER);
+        rectTransform.anchorMax = new Vector2(ANCHOR_CENTER, ANCHOR_CENTER);
+        rectTransform.pivot = new Vector2(ANCHOR_CENTER, ANCHOR_CENTER);
+        rectTransform.anchoredPosition = new Vector2(xPos, yPos);
+        rectTransform.sizeDelta = new Vector2(width, height);
+
+        Image borderImage = borderObj.AddComponent<Image>();
+        borderImage.color = Color.yellow;
+        borderImage.raycastTarget = false;
+
+        return borderImage;
     }
 
     private void CreateTurnTimerText()
@@ -164,7 +188,7 @@ public class QubeCell : MonoBehaviour
             image.enabled = true;
         }
 
-        SetOutline(false);
+        SetOutline(false, false, false, false);
         SetTurnTimer(-1);
     }
 
@@ -195,16 +219,22 @@ public class QubeCell : MonoBehaviour
         }
     }
 
-    public void SetOutline(bool enabled, Color? outlineColor = null)
+    public void SetOutline(bool top, bool bottom, bool left, bool right, Color? outlineColor = null)
     {
-        if (outline == null) return;
+        if (topBorder == null || bottomBorder == null || leftBorder == null || rightBorder == null)
+            return;
 
-        outline.enabled = enabled;
+        Color borderColor = outlineColor ?? Color.yellow;
 
-        if (enabled && outlineColor.HasValue)
-        {
-            outline.effectColor = outlineColor.Value;
-        }
+        topBorder.enabled = top;
+        bottomBorder.enabled = bottom;
+        leftBorder.enabled = left;
+        rightBorder.enabled = right;
+
+        if (top) topBorder.color = borderColor;
+        if (bottom) bottomBorder.color = borderColor;
+        if (left) leftBorder.color = borderColor;
+        if (right) rightBorder.color = borderColor;
     }
 
     public void SetTurnTimer(int remainingTurns, bool isCenter = false, Vector2? offset = null)

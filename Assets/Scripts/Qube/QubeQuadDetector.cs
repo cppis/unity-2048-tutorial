@@ -120,7 +120,10 @@ public class QubeQuadDetector : MonoBehaviour
 
         Debug.Log($"  Region bounds: ({minX},{minY}) to ({maxX},{maxY})");
 
-        // 4. 큰 직사각형부터 찾기 (greedy)
+        // Region을 HashSet으로 변환 (빠른 검색용)
+        HashSet<Vector2Int> regionSet = new HashSet<Vector2Int>(region);
+
+        // 4. Cell 기반으로 직사각형 찾기 (큰 직사각형부터, greedy)
         for (int height = maxY - minY + 1; height >= 2; height--)
         {
             for (int width = maxX - minX + 1; width >= 2; width--)
@@ -129,17 +132,24 @@ public class QubeQuadDetector : MonoBehaviour
                 {
                     for (int startX = minX; startX + width - 1 <= maxX; startX++)
                     {
-                        // 이 직사각형이 완전한 블록들로 구성되는지 확인
+                        // 직사각형 내의 모든 셀 수집
                         List<Vector2Int> quadCells = new List<Vector2Int>();
                         HashSet<int> involvedBlocks = new HashSet<int>();
                         bool isValid = true;
 
-                        // 직사각형 내의 모든 셀 수집
                         for (int y = startY; y < startY + height; y++)
                         {
                             for (int x = startX; x < startX + width; x++)
                             {
                                 Vector2Int cell = new Vector2Int(x, y);
+
+                                // 중요: region에 포함된 셀만 처리
+                                if (!regionSet.Contains(cell))
+                                {
+                                    isValid = false;
+                                    break;
+                                }
+
                                 QubeCell qCell = grid.GetCell(cell);
 
                                 if (qCell == null || !qCell.isOccupied)
@@ -154,10 +164,11 @@ public class QubeQuadDetector : MonoBehaviour
                             if (!isValid) break;
                         }
 
+                        // 최소 4셀 필요
                         if (!isValid || quadCells.Count < 4)
                             continue;
 
-                        // 관련된 블록 중 이미 사용된 블록이 있는지 확인
+                        // 이미 사용된 블록이 포함되어 있으면 스킵
                         bool hasUsedBlock = false;
                         foreach (int blockId in involvedBlocks)
                         {
@@ -167,60 +178,24 @@ public class QubeQuadDetector : MonoBehaviour
                                 break;
                             }
                         }
+                        if (hasUsedBlock) continue;
 
-                        if (hasUsedBlock)
-                            continue;
-
-                        // 각 관련 블록이 완전히 포함되는지 확인 (블록 분할 방지)
+                        // 블록 완전 포함 체크: 직사각형에 포함된 각 블록이 완전히 포함되는지 확인
                         bool allBlocksComplete = true;
-                        string blockCheckLog = "";
-                        List<string> missingCellsLog = new List<string>();
-
                         foreach (int blockId in involvedBlocks)
                         {
                             List<Vector2Int> blockCells = blockGroups[blockId];
-                            int cellsInQuad = 0;
-                            int cellsOutsideQuad = 0;
-                            List<Vector2Int> outsideCells = new List<Vector2Int>();
 
+                            // 이 블록의 모든 셀이 quadCells에 포함되는지 확인
                             foreach (var blockCell in blockCells)
                             {
-                                if (quadCells.Contains(blockCell))
+                                if (!quadCells.Contains(blockCell))
                                 {
-                                    cellsInQuad++;
-                                }
-                                else
-                                {
-                                    cellsOutsideQuad++;
-                                    outsideCells.Add(blockCell);
+                                    allBlocksComplete = false;
+                                    break;
                                 }
                             }
-
-                            blockCheckLog += $" Block{blockId}({cellsInQuad}/{blockCells.Count})";
-
-                            if (cellsOutsideQuad > 0)
-                            {
-                                allBlocksComplete = false;
-                                string outsideStr = string.Join(", ", outsideCells.ConvertAll(c => $"({c.x},{c.y})"));
-                                missingCellsLog.Add($"Block{blockId} missing: {outsideStr}");
-                            }
-                        }
-
-                        // 3x3 이상인 경우 상세 로그 출력
-                        if (width >= 3 && height >= 3)
-                        {
-                            string quadCellsStr = string.Join(", ", quadCells.ConvertAll(c => $"({c.x},{c.y})"));
-                            Debug.Log($"  Checking {width}x{height} at ({startX},{startY}):");
-                            Debug.Log($"    Cells: {quadCellsStr}");
-                            Debug.Log($"    Blocks:{blockCheckLog}");
-                            Debug.Log($"    allBlocksComplete={allBlocksComplete}");
-                            if (!allBlocksComplete && missingCellsLog.Count > 0)
-                            {
-                                foreach (var log in missingCellsLog)
-                                {
-                                    Debug.Log($"      ✗ {log}");
-                                }
-                            }
+                            if (!allBlocksComplete) break;
                         }
 
                         if (allBlocksComplete)
@@ -235,7 +210,8 @@ public class QubeQuadDetector : MonoBehaviour
                                 usedBlocks.Add(blockId);
                             }
 
-                            Debug.Log($"    ✓ Found quad: {width}x{height} at ({startX},{startY}) with {involvedBlocks.Count} complete block(s)");
+                            string blockIdsStr = string.Join(", ", involvedBlocks);
+                            Debug.Log($"    ✓ Found quad: {width}x{height} at ({startX},{startY}) with {involvedBlocks.Count} complete block(s) [BlockIDs: {blockIdsStr}]");
                         }
                     }
                 }
@@ -259,8 +235,8 @@ public class QubeQuadDetector : MonoBehaviour
                 {
                     // 원본 색상 복원 (그대로 유지)
                     cell.SetColor(cell.originalColor);
-                    // 외곽선 비활성화
-                    cell.SetOutline(false);
+                    // 외곽선 비활성화 (모든 변)
+                    cell.SetOutline(false, false, false, false);
                     // 턴 타이머 텍스트 숨김
                     cell.SetTurnTimer(-1);
                 }
@@ -300,8 +276,14 @@ public class QubeQuadDetector : MonoBehaviour
                     highlightColor.a = 1f;
                     cell.SetColor(highlightColor);
 
-                    // 외곽선 활성화 (노란색)
-                    cell.SetOutline(true, Color.yellow);
+                    // 이 셀이 quad의 어느 경계에 있는지 확인
+                    bool isTopEdge = (cellPos.y == quad.maxY);
+                    bool isBottomEdge = (cellPos.y == quad.minY);
+                    bool isLeftEdge = (cellPos.x == quad.minX);
+                    bool isRightEdge = (cellPos.x == quad.maxX);
+
+                    // 외곽 변만 활성화
+                    cell.SetOutline(isTopEdge, isBottomEdge, isLeftEdge, isRightEdge, Color.yellow);
 
                     // 중앙 셀인지 확인
                     bool isCenter = (cellPos == centerCell);
