@@ -164,12 +164,14 @@ public class QubePulseSystem : MonoBehaviour
             Debug.Log($"[ProcessOverlappingQuads]   → Merged! New size: {mergedQuad.width}x{mergedQuad.height} (size={mergedQuad.size})");
         }
 
-        Debug.Log($"[ProcessOverlappingQuads] canMergeAll={canMergeAll}, mergedQuad.size={mergedQuad.size}, newQuad.size={newQuad.size}");
-        Debug.Log($"[ProcessOverlappingQuads] Condition check: {canMergeAll} && {mergedQuad.size} >= {newQuad.size} = {canMergeAll && mergedQuad.size >= newQuad.size}");
+        // 기존 Quad들의 총 크기 계산
+        int totalOldSize = allRelatedQuads.Sum(q => q.size);
 
-        // 병합 가능하고, 결과가 새 Quad보다 크거나 같으면 교체
-        // (크거나 같음: 확장 또는 포함 관계를 모두 처리)
-        if (canMergeAll && mergedQuad.size >= newQuad.size)
+        Debug.Log($"[ProcessOverlappingQuads] canMergeAll={canMergeAll}, mergedQuad.size={mergedQuad.size}, newQuad.size={newQuad.size}, totalOldSize={totalOldSize}");
+        Debug.Log($"[ProcessOverlappingQuads] Merge condition: {canMergeAll} && {mergedQuad.size} > {totalOldSize} = {canMergeAll && mergedQuad.size > totalOldSize}");
+
+        // 병합 가능하고, 결과가 기존보다 크면 교체 (실제 확장된 경우만)
+        if (canMergeAll && mergedQuad.size > totalOldSize)
         {
             foreach (var quad in allRelatedQuads)
             {
@@ -180,9 +182,48 @@ public class QubePulseSystem : MonoBehaviour
             trackedQuads.Add(mergedQuad);
             Debug.Log($"→ Expanded to {mergedQuad.width}x{mergedQuad.height} Quad (turnTimer={mergedQuad.turnTimer}, creationTurn={mergedQuad.creationTurn})");
         }
+        // 병합 실패했지만 새 Quad가 기존 Quad 중 일부를 완전히 포함하는 경우
+        else if (!canMergeAll && newQuad.size >= 4)
+        {
+            // 새 Quad에 완전히 포함되는 기존 Quad들 찾기
+            List<QubeQuad> containedQuads = new List<QubeQuad>();
+            foreach (var existingQuad in overlappingQuads)
+            {
+                bool isContained = true;
+                foreach (var cell in existingQuad.cells)
+                {
+                    if (!newQuad.cells.Contains(cell))
+                    {
+                        isContained = false;
+                        break;
+                    }
+                }
+                if (isContained)
+                {
+                    containedQuads.Add(existingQuad);
+                }
+            }
+
+            // 포함된 Quad가 있으면 제거하고 새 Quad 추가
+            if (containedQuads.Count > 0)
+            {
+                foreach (var quad in containedQuads)
+                {
+                    trackedQuads.Remove(quad);
+                    Debug.Log($"→ Removed contained Quad: {quad.width}x{quad.height} (turnTimer was {quad.turnTimer})");
+                }
+                newQuad.creationTurn = globalTurnCounter;
+                trackedQuads.Add(newQuad);
+                Debug.Log($"→ Added new Quad {newQuad.width}x{newQuad.height} (replaced {containedQuads.Count} smaller quad(s))");
+            }
+            else
+            {
+                Debug.Log($"→ Cannot merge overlapping Quads or no expansion - keeping existing Quads");
+            }
+        }
         else
         {
-            Debug.Log($"→ Cannot merge overlapping Quads - keeping existing Quads");
+            Debug.Log($"→ Cannot merge overlapping Quads or no expansion - keeping existing Quads");
         }
     }
 

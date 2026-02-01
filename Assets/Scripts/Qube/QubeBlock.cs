@@ -8,6 +8,9 @@ public class QubeBlock : MonoBehaviour
     private const int SPAWN_Y_POSITION = 1;
     private const int ROTATION_COUNT = 4;
 
+    // HSV 색상 조절 상수
+    private const float PLACED_SATURATION = 0.6f; // 배치 후 채도 감소
+
     private static int nextBlockId = 0; // Static counter for unique block IDs
 
     private static readonly Vector2Int[] WALL_KICK_OFFSETS = new Vector2Int[]
@@ -40,6 +43,7 @@ public class QubeBlock : MonoBehaviour
         position = CalculateSpawnPosition();
         InitializeRectTransform();
         CreateVisuals();
+        UpdatePlacementVisualFeedback(); // 초기 시각적 피드백 설정
     }
 
     private Vector2Int CalculateSpawnPosition()
@@ -153,6 +157,7 @@ public class QubeBlock : MonoBehaviour
         {
             position += direction;
             UpdateVisuals();
+            UpdatePlacementVisualFeedback(); // 이동 후 피드백 업데이트
         }
     }
 
@@ -164,6 +169,7 @@ public class QubeBlock : MonoBehaviour
         {
             currentCells = rotatedCells;
             CreateVisuals();
+            UpdatePlacementVisualFeedback(); // 회전 후 피드백 업데이트
         }
     }
 
@@ -204,13 +210,32 @@ public class QubeBlock : MonoBehaviour
         Transform placedContainer = grid.GetPlacedBlocksContainer();
         int blockId = nextBlockId++; // Generate unique block ID
 
+        // 배치 시 색상 계산 (HSV 기반 - 채도만 감소, 밝기는 유지)
+        Color baseColor = shape.blockColor;
+        float h, s, v;
+        Color.RGBToHSV(baseColor, out h, out s, out v);
+
+        s = Mathf.Clamp01(s * PLACED_SATURATION); // 채도만 감소 (40% 감소)
+        // v는 원본 유지
+
+        Color placedColor = Color.HSVToRGB(h, s, v);
+        placedColor.a = 1f;
+
         for (int i = 0; i < currentCells.Length; i++)
         {
             Vector2Int globalPos = position + currentCells[i];
 
-            grid.SetCellOccupied(globalPos, true, shape.blockColor, false, blockId);
+            grid.SetCellOccupied(globalPos, true, placedColor, false, blockId);
 
             GameObject cellObj = cellObjects[i];
+
+            // 배치된 블록의 색상을 변경
+            Image cellImage = cellObj.GetComponent<Image>();
+            if (cellImage != null)
+            {
+                cellImage.color = placedColor;
+            }
+
             cellObj.name = $"PlacedCell_{globalPos.x}_{globalPos.y}";
             cellObj.transform.SetParent(placedContainer, worldPositionStays: true);
         }
@@ -227,5 +252,20 @@ public class QubeBlock : MonoBehaviour
             globalPositions[i] = position + currentCells[i];
         }
         return globalPositions;
+    }
+
+    public void UpdatePlacementVisualFeedback()
+    {
+        // 드래그 중에는 원본 색상 그대로 사용
+        Color visualColor = shape.blockColor;
+
+        foreach (var cellObj in cellObjects)
+        {
+            Image image = cellObj.GetComponent<Image>();
+            if (image != null)
+            {
+                image.color = visualColor;
+            }
+        }
     }
 }

@@ -9,7 +9,7 @@ public class QubeCell : MonoBehaviour
     private const int TIMER_FONT_SIZE_NORMAL = 36;
     private const int TIMER_FONT_SIZE_CENTER = 72;
     private const int CLEAR_TIMER_DURATION = 8;
-    private const float OUTLINE_THICKNESS = 3f; // 외곽선 두께
+    private const float OUTLINE_THICKNESS = 6f; // 외곽선 두께
 
     private static readonly Color EMPTY_COLOR = new Color(0.176f, 0.204f, 0.212f, 1f);
     private static readonly Color CLEARED_COLOR = new Color(0.08f, 0.1f, 0.11f, 1f);

@@ -20,6 +20,7 @@ public class QubeGameManager : MonoBehaviour
     [Header("UI")]
     public TextMeshProUGUI scoreText;
     public TextMeshProUGUI turnCounterText;
+    public TextMeshProUGUI gameOverText;
 
     private QubeBlock currentBlock;
     private int score = 0;
@@ -62,6 +63,12 @@ public class QubeGameManager : MonoBehaviour
         grid.ClearGrid();
         pulseSystem.ClearAllQuads(); // 모든 Quad 리셋
 
+        // 게임 오버 텍스트 숨김
+        if (gameOverText != null)
+        {
+            gameOverText.gameObject.SetActive(false);
+        }
+
         UpdateUI();
         SpawnNewBlock();
     }
@@ -88,6 +95,13 @@ public class QubeGameManager : MonoBehaviour
 
             currentBlock.Initialize(randomShape, grid);
             Debug.Log($"Block parent: {blockObj.transform.parent.name}, localScale: {blockObj.transform.localScale}");
+
+            // 배치 가능 여부 확인 (게임 오버 체크)
+            if (!currentBlock.CanPlace())
+            {
+                Debug.Log("Cannot place new block - Game Over!");
+                GameOver();
+            }
         }
         else
         {
@@ -97,7 +111,17 @@ public class QubeGameManager : MonoBehaviour
 
     private void Update()
     {
-        if (isGameOver || currentBlock == null) return;
+        // 게임 오버 시 R 키로 재시작
+        if (isGameOver)
+        {
+            if (Input.GetKeyDown(KeyCode.R))
+            {
+                NewGame();
+            }
+            return;
+        }
+
+        if (currentBlock == null) return;
 
         HandleInput();
     }
@@ -199,5 +223,19 @@ public class QubeGameManager : MonoBehaviour
     {
         isGameOver = true;
         Debug.Log("Game Over!");
+
+        // 게임 오버 텍스트 표시
+        if (gameOverText != null)
+        {
+            gameOverText.text = $"GAME OVER!\nFinal Score: {score}\n\nPress R to Restart";
+            gameOverText.gameObject.SetActive(true);
+        }
+
+        // 현재 블록 제거
+        if (currentBlock != null)
+        {
+            Destroy(currentBlock.gameObject);
+            currentBlock = null;
+        }
     }
 }
