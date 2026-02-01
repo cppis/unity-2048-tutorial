@@ -119,8 +119,19 @@ public class QubeBlock : MonoBehaviour
 
     private Vector2 CalculateCellPosition(Vector2Int gridPos, float cellStep)
     {
-        float xPos = (gridPos.x - QubeGrid.WIDTH / 2f + ANCHOR_CENTER) * cellStep;
-        float yPos = (gridPos.y - QubeGrid.HEIGHT / 2f + ANCHOR_CENTER) * cellStep;
+        // GridLayoutGroup 기반 위치 계산
+        // 그리드 중앙이 (0,0)이고, 왼쪽 아래가 시작점
+        float gridWidth = QubeGrid.WIDTH * grid.cellSize + (QubeGrid.WIDTH - 1) * grid.spacing;
+        float gridHeight = QubeGrid.HEIGHT * grid.cellSize + (QubeGrid.HEIGHT - 1) * grid.spacing;
+
+        // 왼쪽 아래 모서리 위치
+        float leftX = -gridWidth / 2f;
+        float bottomY = -gridHeight / 2f;
+
+        // 각 셀의 중심 위치
+        float xPos = leftX + gridPos.x * cellStep + grid.cellSize / 2f;
+        float yPos = bottomY + gridPos.y * cellStep + grid.cellSize / 2f;
+
         return new Vector2(xPos, yPos);
     }
 
@@ -133,6 +144,23 @@ public class QubeBlock : MonoBehaviour
     public bool CanPlace()
     {
         return IsPositionValid(position, currentCells, checkOccupancy: true);
+    }
+
+    public bool CanPlaceAnywhere()
+    {
+        // 그리드 전체를 검색해서 블록을 배치할 수 있는 위치가 하나라도 있는지 확인
+        for (int y = 0; y < QubeGrid.HEIGHT; y++)
+        {
+            for (int x = 0; x < QubeGrid.WIDTH; x++)
+            {
+                Vector2Int testPos = new Vector2Int(x, y);
+                if (IsPositionValid(testPos, currentCells, checkOccupancy: true))
+                {
+                    return true;
+                }
+            }
+        }
+        return false;
     }
 
     private bool IsPositionValid(Vector2Int pos, Vector2Int[] cells, bool checkOccupancy)

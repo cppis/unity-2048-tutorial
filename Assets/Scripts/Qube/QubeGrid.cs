@@ -1,4 +1,5 @@
 using UnityEngine;
+using UnityEngine.UI;
 
 public class QubeGrid : MonoBehaviour
 {
@@ -15,11 +16,46 @@ public class QubeGrid : MonoBehaviour
 
     private QubeCell[,] cells = new QubeCell[WIDTH, HEIGHT];
     private GameObject placedBlocksContainer;
+    private GridLayoutGroup gridLayout;
 
     private void Awake()
     {
+        SetupGridLayout();
         CreatePlacedBlocksContainer();
         CreateGrid();
+    }
+
+    private void SetupGridLayout()
+    {
+        // GridLayoutGroup 설정 또는 생성
+        gridLayout = GetComponent<GridLayoutGroup>();
+        if (gridLayout == null)
+        {
+            gridLayout = gameObject.AddComponent<GridLayoutGroup>();
+        }
+
+        // Grid Layout 설정
+        gridLayout.cellSize = new Vector2(cellSize, cellSize);
+        gridLayout.spacing = new Vector2(spacing, spacing);
+        gridLayout.constraint = GridLayoutGroup.Constraint.FixedColumnCount;
+        gridLayout.constraintCount = WIDTH;
+        gridLayout.childAlignment = TextAnchor.MiddleCenter;
+        gridLayout.startCorner = GridLayoutGroup.Corner.LowerLeft;
+        gridLayout.startAxis = GridLayoutGroup.Axis.Horizontal;
+
+        // RectTransform 설정
+        RectTransform rect = GetComponent<RectTransform>();
+        if (rect != null)
+        {
+            // 그리드 전체 크기 계산
+            float totalWidth = WIDTH * cellSize + (WIDTH - 1) * spacing;
+            float totalHeight = HEIGHT * cellSize + (HEIGHT - 1) * spacing;
+
+            rect.sizeDelta = new Vector2(totalWidth, totalHeight);
+            rect.anchorMin = new Vector2(ANCHOR_CENTER, ANCHOR_CENTER);
+            rect.anchorMax = new Vector2(ANCHOR_CENTER, ANCHOR_CENTER);
+            rect.pivot = new Vector2(ANCHOR_CENTER, ANCHOR_CENTER);
+        }
     }
 
     private void CreatePlacedBlocksContainer()
@@ -42,9 +78,11 @@ public class QubeGrid : MonoBehaviour
 
     private void CreateGrid()
     {
-        for (int x = 0; x < WIDTH; x++)
+        // GridLayoutGroup은 왼쪽 아래에서 시작하여 오른쪽으로 진행
+        // 따라서 y를 0부터 시작하여 위로 올라가면서 생성
+        for (int y = 0; y < HEIGHT; y++)
         {
-            for (int y = 0; y < HEIGHT; y++)
+            for (int x = 0; x < WIDTH; x++)
             {
                 cells[x, y] = CreateCell(x, y);
             }
@@ -58,24 +96,17 @@ public class QubeGrid : MonoBehaviour
 
         cell.coordinates = new Vector2Int(x, y);
         cell.SetOccupied(false, Color.clear);
+        cellObj.name = $"Cell_{x}_{y}";
 
-        SetupCellTransform(cellObj.GetComponent<RectTransform>(), x, y);
+        // GridLayoutGroup이 자동으로 배치하므로 수동 위치 설정 불필요
+        // 단, 크기는 명시적으로 설정
+        RectTransform cellRect = cellObj.GetComponent<RectTransform>();
+        if (cellRect != null)
+        {
+            cellRect.sizeDelta = new Vector2(cellSize, cellSize);
+        }
 
         return cell;
-    }
-
-    private void SetupCellTransform(RectTransform cellRect, int x, int y)
-    {
-        cellRect.sizeDelta = new Vector2(cellSize, cellSize);
-        cellRect.anchoredPosition = CalculateCellPosition(x, y);
-    }
-
-    private Vector2 CalculateCellPosition(int x, int y)
-    {
-        float cellStep = cellSize + spacing;
-        float xPos = (x - WIDTH / 2f + ANCHOR_CENTER) * cellStep;
-        float yPos = (y - HEIGHT / 2f + ANCHOR_CENTER) * cellStep;
-        return new Vector2(xPos, yPos);
     }
 
     public QubeCell GetCell(int x, int y)

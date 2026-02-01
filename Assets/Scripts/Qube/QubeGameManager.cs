@@ -96,10 +96,10 @@ public class QubeGameManager : MonoBehaviour
             currentBlock.Initialize(randomShape, grid);
             Debug.Log($"Block parent: {blockObj.transform.parent.name}, localScale: {blockObj.transform.localScale}");
 
-            // 배치 가능 여부 확인 (게임 오버 체크)
-            if (!currentBlock.CanPlace())
+            // 그리드 전체에서 블록을 배치할 수 있는 위치가 있는지 확인
+            if (!currentBlock.CanPlaceAnywhere())
             {
-                Debug.Log("Cannot place new block - Game Over!");
+                Debug.Log("Cannot place block anywhere on the grid - Game Over!");
                 GameOver();
             }
         }

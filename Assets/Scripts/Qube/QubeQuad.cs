@@ -10,12 +10,12 @@ public class QubeQuad
     public int turnTimer; // 생성 후 경과 턴
     public int creationTurn; // 생성된 턴 (디버그용)
 
-    public QubeQuad(List<Vector2Int> quadCells, int currentTurn = 0)
+    public QubeQuad(List<Vector2Int> quadCells, int currentTurn = 0, int initialTurnTimer = 0)
     {
         cells = new List<Vector2Int>(quadCells);
         CalculateBounds();
         size = width * height;
-        turnTimer = 0;
+        turnTimer = initialTurnTimer;
         creationTurn = currentTurn;
     }
 
@@ -141,6 +141,9 @@ public class QubeQuad
             mergedCells.Add(cell);
         }
 
-        return new QubeQuad(new List<Vector2Int>(mergedCells), currentTurn);
+        // 병합 시 가장 오래된 Quad의 turnTimer 유지 (최대값)
+        int preservedTurnTimer = Mathf.Max(this.turnTimer, other.turnTimer);
+
+        return new QubeQuad(new List<Vector2Int>(mergedCells), currentTurn, preservedTurnTimer);
     }
 }

@@ -207,14 +207,18 @@ public class QubePulseSystem : MonoBehaviour
             // 포함된 Quad가 있으면 제거하고 새 Quad 추가
             if (containedQuads.Count > 0)
             {
+                // 포함된 Quad들 중 가장 오래된 것의 turnTimer 보존
+                int maxTurnTimer = 0;
                 foreach (var quad in containedQuads)
                 {
+                    maxTurnTimer = Mathf.Max(maxTurnTimer, quad.turnTimer);
                     trackedQuads.Remove(quad);
                     Debug.Log($"→ Removed contained Quad: {quad.width}x{quad.height} (turnTimer was {quad.turnTimer})");
                 }
                 newQuad.creationTurn = globalTurnCounter;
+                newQuad.turnTimer = maxTurnTimer; // 가장 오래된 Quad의 turnTimer 유지
                 trackedQuads.Add(newQuad);
-                Debug.Log($"→ Added new Quad {newQuad.width}x{newQuad.height} (replaced {containedQuads.Count} smaller quad(s))");
+                Debug.Log($"→ Added new Quad {newQuad.width}x{newQuad.height} (replaced {containedQuads.Count} smaller quad(s), preserved turnTimer={maxTurnTimer})");
             }
             else
             {
