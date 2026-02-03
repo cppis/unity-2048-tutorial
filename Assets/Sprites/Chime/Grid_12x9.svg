@@ -1,0 +1,33 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg width="1015" height="760" xmlns="http://www.w3.org/2000/svg">
+  <desc>Chime Grid: 12x9 cells, 80px cell size, 5px spacing</desc>
+
+  <!-- Background (transparent) -->
+  <rect width="1015" height="760" fill="none"/>
+
+  <!-- Grid lines (white at 10% opacity) -->
+  <g stroke="white" stroke-opacity="0.1" stroke-width="1" fill="none">
+    <!-- Vertical lines (11 lines between 12 columns) -->
+    <line x1="82.5" y1="0" x2="82.5" y2="760"/>
+    <line x1="167.5" y1="0" x2="167.5" y2="760"/>
+    <line x1="252.5" y1="0" x2="252.5" y2="760"/>
+    <line x1="337.5" y1="0" x2="337.5" y2="760"/>
+    <line x1="422.5" y1="0" x2="422.5" y2="760"/>
+    <line x1="507.5" y1="0" x2="507.5" y2="760"/>
+    <line x1="592.5" y1="0" x2="592.5" y2="760"/>
+    <line x1="677.5" y1="0" x2="677.5" y2="760"/>
+    <line x1="762.5" y1="0" x2="762.5" y2="760"/>
+    <line x1="847.5" y1="0" x2="847.5" y2="760"/>
+    <line x1="932.5" y1="0" x2="932.5" y2="760"/>
+
+    <!-- Horizontal lines (8 lines between 9 rows) -->
+    <line x1="0" y1="82.5" x2="1015" y2="82.5"/>
+    <line x1="0" y1="167.5" x2="1015" y2="167.5"/>
+    <line x1="0" y1="252.5" x2="1015" y2="252.5"/>
+    <line x1="0" y1="337.5" x2="1015" y2="337.5"/>
+    <line x1="0" y1="422.5" x2="1015" y2="422.5"/>
+    <line x1="0" y1="507.5" x2="1015" y2="507.5"/>
+    <line x1="0" y1="592.5" x2="1015" y2="592.5"/>
+    <line x1="0" y1="677.5" x2="1015" y2="677.5"/>
+  </g>
+</svg>
