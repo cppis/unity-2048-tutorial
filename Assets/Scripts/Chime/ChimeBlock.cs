@@ -212,7 +212,33 @@ public class ChimeBlock : MonoBehaviour
     public bool CanMove(Vector2Int direction)
     {
         Vector2Int newPos = position + direction;
-        return IsPositionValid(newPos, currentCells, checkOccupancy: false);
+
+        // 새 위치가 완전히 유효하면 이동 허용
+        if (IsPositionValid(newPos, currentCells, checkOccupancy: false))
+        {
+            return true;
+        }
+
+        // 현재 위치가 그리드 밖에 있고, 새 위치가 더 많은 셀이 그리드 내에 있으면 이동 허용
+        // (회전으로 인해 그리드 밖으로 나간 경우 안쪽으로 돌아올 수 있도록)
+        int currentCellsInGrid = CountCellsInGrid(position);
+        int newCellsInGrid = CountCellsInGrid(newPos);
+
+        return newCellsInGrid > currentCellsInGrid;
+    }
+
+    private int CountCellsInGrid(Vector2Int pos)
+    {
+        int count = 0;
+        foreach (var cell in currentCells)
+        {
+            Vector2Int checkPos = pos + cell;
+            if (grid.IsValidPosition(checkPos))
+            {
+                count++;
+            }
+        }
+        return count;
     }
 
     public bool CanPlace()
