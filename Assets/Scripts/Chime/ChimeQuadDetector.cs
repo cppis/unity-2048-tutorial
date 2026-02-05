@@ -124,9 +124,10 @@ public class ChimeQuadDetector : MonoBehaviour
         HashSet<Vector2Int> regionSet = new HashSet<Vector2Int>(region);
 
         // 4. Cell 기반으로 직사각형 찾기 (큰 직사각형부터, greedy)
-        for (int height = maxY - minY + 1; height >= 2; height--)
+        // 최소 3x3 이상만 허용
+        for (int height = maxY - minY + 1; height >= 3; height--)
         {
-            for (int width = maxX - minX + 1; width >= 2; width--)
+            for (int width = maxX - minX + 1; width >= 3; width--)
             {
                 for (int startY = minY; startY + height - 1 <= maxY; startY++)
                 {
@@ -164,8 +165,8 @@ public class ChimeQuadDetector : MonoBehaviour
                             if (!isValid) break;
                         }
 
-                        // 최소 4셀 필요
-                        if (!isValid || quadCells.Count < 4)
+                        // 최소 3x3 (가로 3칸, 세로 3칸) 필요
+                        if (!isValid || width < 3 || height < 3)
                             continue;
 
                         // 이미 사용된 블록이 포함되어 있으면 스킵
@@ -180,39 +181,18 @@ public class ChimeQuadDetector : MonoBehaviour
                         }
                         if (hasUsedBlock) continue;
 
-                        // 블록 완전 포함 체크: 직사각형에 포함된 각 블록이 완전히 포함되는지 확인
-                        bool allBlocksComplete = true;
+                        // 유효한 quad 발견! (셀만 채워져 있으면 OK - 블록 완전 포함 조건 제거)
+                        ChimeQuad quad = new ChimeQuad(quadCells, 0);
+                        quads.Add(quad);
+
+                        // 사용된 블록 표시
                         foreach (int blockId in involvedBlocks)
                         {
-                            List<Vector2Int> blockCells = blockGroups[blockId];
-
-                            // 이 블록의 모든 셀이 quadCells에 포함되는지 확인
-                            foreach (var blockCell in blockCells)
-                            {
-                                if (!quadCells.Contains(blockCell))
-                                {
-                                    allBlocksComplete = false;
-                                    break;
-                                }
-                            }
-                            if (!allBlocksComplete) break;
+                            usedBlocks.Add(blockId);
                         }
 
-                        if (allBlocksComplete)
-                        {
-                            // 유효한 quad 발견!
-                            ChimeQuad quad = new ChimeQuad(quadCells, 0);
-                            quads.Add(quad);
-
-                            // 사용된 블록 표시
-                            foreach (int blockId in involvedBlocks)
-                            {
-                                usedBlocks.Add(blockId);
-                            }
-
-                            string blockIdsStr = string.Join(", ", involvedBlocks);
-                            Debug.Log($"    ✓ Found quad: {width}x{height} at ({startX},{startY}) with {involvedBlocks.Count} complete block(s) [BlockIDs: {blockIdsStr}]");
-                        }
+                        string blockIdsStr = string.Join(", ", involvedBlocks);
+                        Debug.Log($"    ✓ Found quad: {width}x{height} at ({startX},{startY}) with {involvedBlocks.Count} block(s) [BlockIDs: {blockIdsStr}]");
                     }
                 }
             }

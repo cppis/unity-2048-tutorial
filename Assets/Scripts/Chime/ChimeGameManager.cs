@@ -81,8 +81,8 @@ public class ChimeGameManager : MonoBehaviour
             return;
         }
 
-        // 랜덤 블록 선택 (기본 4종만 사용: L, I, T, 1x1)
-        ChimeBlockShape randomShape = blockShapes[Random.Range(0, Mathf.Min(4, blockShapes.Length))];
+        // 전체 펜토미노 사용
+        ChimeBlockShape randomShape = blockShapes[Random.Range(0, blockShapes.Length)];
 
         // 블록 생성 (Canvas의 자식으로 생성)
         GameObject blockObj = Instantiate(blockPrefab, grid.transform.parent);

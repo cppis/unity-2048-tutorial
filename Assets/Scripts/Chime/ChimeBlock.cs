@@ -71,6 +71,7 @@ public class ChimeBlock : MonoBehaviour
         }
 
         UpdateVisuals();
+        UpdateOutlineBorders(); // 외곽선만 표시
     }
 
     private void ClearExistingVisuals()
@@ -87,13 +88,86 @@ public class ChimeBlock : MonoBehaviour
         GameObject cellObj = new GameObject("BlockCell");
         cellObj.transform.SetParent(transform);
 
+        // 배경은 투명
         Image image = cellObj.AddComponent<Image>();
-        image.color = shape.blockColor;
+        image.color = Color.clear;
         image.raycastTarget = false;
 
         SetupCellRectTransform(cellObj.GetComponent<RectTransform>());
 
+        // 4개의 아웃라인 border 생성
+        CreateCellBorders(cellObj, grid.cellSize);
+
         return cellObj;
+    }
+
+    private void CreateCellBorders(GameObject cellObj, float cellSize)
+    {
+        float borderThickness = 4f;
+
+        // 상단
+        CreateBorder(cellObj, "TopBorder", cellSize, borderThickness, 0, cellSize / 2);
+        // 하단
+        CreateBorder(cellObj, "BottomBorder", cellSize, borderThickness, 0, -cellSize / 2);
+        // 좌측
+        CreateBorder(cellObj, "LeftBorder", borderThickness, cellSize, -cellSize / 2, 0);
+        // 우측
+        CreateBorder(cellObj, "RightBorder", borderThickness, cellSize, cellSize / 2, 0);
+    }
+
+    private void CreateBorder(GameObject parent, string name, float width, float height, float xPos, float yPos)
+    {
+        GameObject borderObj = new GameObject(name);
+        borderObj.transform.SetParent(parent.transform, false);
+
+        RectTransform rect = borderObj.AddComponent<RectTransform>();
+        rect.anchorMin = new Vector2(ANCHOR_CENTER, ANCHOR_CENTER);
+        rect.anchorMax = new Vector2(ANCHOR_CENTER, ANCHOR_CENTER);
+        rect.pivot = new Vector2(ANCHOR_CENTER, ANCHOR_CENTER);
+        rect.anchoredPosition = new Vector2(xPos, yPos);
+        rect.sizeDelta = new Vector2(width, height);
+        rect.localScale = Vector3.one;
+
+        Image borderImage = borderObj.AddComponent<Image>();
+        borderImage.color = Color.white;
+        borderImage.raycastTarget = false;
+
+        // Canvas 추가하여 렌더링 순서를 block보다 위에 표시
+        Canvas canvas = borderObj.AddComponent<Canvas>();
+        canvas.overrideSorting = true;
+        canvas.sortingOrder = 1000;
+
+        // 초기에는 비활성화 (UpdateOutlineBorders에서 활성화)
+        borderObj.SetActive(false);
+    }
+
+    private void UpdateOutlineBorders()
+    {
+        // currentCells를 HashSet으로 변환 (빠른 검색)
+        HashSet<Vector2Int> cellSet = new HashSet<Vector2Int>(currentCells);
+
+        for (int i = 0; i < currentCells.Length; i++)
+        {
+            Vector2Int cell = currentCells[i];
+            GameObject cellObj = cellObjects[i];
+
+            // 각 방향에 인접한 셀이 있는지 확인
+            bool hasTop = cellSet.Contains(cell + Vector2Int.up);
+            bool hasBottom = cellSet.Contains(cell + Vector2Int.down);
+            bool hasLeft = cellSet.Contains(cell + Vector2Int.left);
+            bool hasRight = cellSet.Contains(cell + Vector2Int.right);
+
+            // 인접 셀이 없는 방향만 border 활성화 (외곽선)
+            Transform topBorder = cellObj.transform.Find("TopBorder");
+            Transform bottomBorder = cellObj.transform.Find("BottomBorder");
+            Transform leftBorder = cellObj.transform.Find("LeftBorder");
+            Transform rightBorder = cellObj.transform.Find("RightBorder");
+
+            if (topBorder != null) topBorder.gameObject.SetActive(!hasTop);
+            if (bottomBorder != null) bottomBorder.gameObject.SetActive(!hasBottom);
+            if (leftBorder != null) leftBorder.gameObject.SetActive(!hasLeft);
+            if (rightBorder != null) rightBorder.gameObject.SetActive(!hasRight);
+        }
     }
 
     private void SetupCellRectTransform(RectTransform rect)
@@ -218,6 +292,7 @@ public class ChimeBlock : MonoBehaviour
 
     private bool TryRotateWithWallKick(Vector2Int[] rotatedCells, bool clockwise)
     {
+        // 먼저 wall kick으로 유효한 위치 찾기 시도
         foreach (var offset in WALL_KICK_OFFSETS)
         {
             Vector2Int testPos = position + offset;
@@ -230,7 +305,9 @@ public class ChimeBlock : MonoBehaviour
             }
         }
 
-        return false;
+        // wall kick 실패해도 회전은 항상 허용 (360도 이상 회전 가능)
+        rotation = (rotation + (clockwise ? 1 : 3)) % ROTATION_COUNT;
+        return true;
     }
 
     public void Place()
@@ -257,6 +334,9 @@ public class ChimeBlock : MonoBehaviour
 
             GameObject cellObj = cellObjects[i];
 
+            // 배치 시 border(아웃라인) 제거
+            RemoveCellBorders(cellObj);
+
             // 배치된 블록의 색상을 변경
             Image cellImage = cellObj.GetComponent<Image>();
             if (cellImage != null)
@@ -272,6 +352,20 @@ public class ChimeBlock : MonoBehaviour
         Destroy(gameObject);
     }
 
+    private void RemoveCellBorders(GameObject cellObj)
+    {
+        // 자식 오브젝트들 (border) 삭제
+        List<GameObject> toDestroy = new List<GameObject>();
+        foreach (Transform child in cellObj.transform)
+        {
+            toDestroy.Add(child.gameObject);
+        }
+        foreach (var obj in toDestroy)
+        {
+            Destroy(obj);
+        }
+    }
+
     public Vector2Int[] GetGlobalPositions()
     {
         Vector2Int[] globalPositions = new Vector2Int[currentCells.Length];
@@ -284,15 +378,25 @@ public class ChimeBlock : MonoBehaviour
 
     public void UpdatePlacementVisualFeedback()
     {
-        // 드래그 중에는 원본 색상 그대로 사용
-        Color visualColor = shape.blockColor;
+        bool canPlace = CanPlace();
+        Color outlineColor = canPlace ? Color.white : new Color(1f, 0.3f, 0.3f, 1f);
 
         foreach (var cellObj in cellObjects)
         {
-            Image image = cellObj.GetComponent<Image>();
-            if (image != null)
+            // 각 셀의 border 색상 변경
+            UpdateCellBorderColors(cellObj, outlineColor);
+        }
+    }
+
+    private void UpdateCellBorderColors(GameObject cellObj, Color color)
+    {
+        // 자식 오브젝트들 (TopBorder, BottomBorder, LeftBorder, RightBorder) 순회
+        foreach (Transform child in cellObj.transform)
+        {
+            Image borderImage = child.GetComponent<Image>();
+            if (borderImage != null)
             {
-                image.color = visualColor;
+                borderImage.color = color;
             }
         }
     }

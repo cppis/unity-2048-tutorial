@@ -8,7 +8,7 @@ public class ChimePulseSystem : MonoBehaviour
     public ChimeGrid grid;
     public ChimeQuadDetector quadDetector;
 
-    private const int PULSE_INTERVAL = 8;
+    private const int PULSE_INTERVAL = 4;
     private const float BONUS_MULTIPLIER_TWO = 1.5f;
     private const float BONUS_MULTIPLIER_THREE_PLUS = 2.0f;
     private const float REMOVAL_DELAY = 0.3f;
@@ -140,9 +140,55 @@ public class ChimePulseSystem : MonoBehaviour
     private void ProcessOverlappingQuads(ChimeQuad newQuad, List<ChimeQuad> overlappingQuads, List<ChimeQuad> adjacentQuads)
     {
         Debug.Log($"[ProcessOverlappingQuads] Processing {overlappingQuads.Count} overlapping + {adjacentQuads.Count} adjacent quads");
+        Debug.Log($"[ProcessOverlappingQuads] New quad: {newQuad.width}x{newQuad.height} (size={newQuad.size})");
 
-        // 새로 감지된 Quad가 기존 Quad들을 포함하거나 확장하는 경우
-        // 모든 관련 Quad들 (overlapping + adjacent)과 병합 시도
+        // 1. 새 Quad가 기존 Quad보다 크면 확장 (단순 대체)
+        ChimeQuad largestOverlapping = null;
+        int maxTurnTimer = 0;
+
+        foreach (var existingQuad in overlappingQuads)
+        {
+            Debug.Log($"[ProcessOverlappingQuads] Comparing with existing: {existingQuad.width}x{existingQuad.height} (size={existingQuad.size})");
+
+            // 새 Quad가 기존 Quad를 완전히 포함하거나 더 크면 확장
+            if (newQuad.size > existingQuad.size)
+            {
+                if (largestOverlapping == null || existingQuad.size > largestOverlapping.size)
+                {
+                    largestOverlapping = existingQuad;
+                }
+                maxTurnTimer = Mathf.Max(maxTurnTimer, existingQuad.turnTimer);
+            }
+        }
+
+        // 확장 가능한 경우
+        if (largestOverlapping != null)
+        {
+            // 기존 겹치는 quad들 중 새 quad보다 작은 것들 제거
+            List<ChimeQuad> toRemove = new List<ChimeQuad>();
+            foreach (var existingQuad in overlappingQuads)
+            {
+                if (newQuad.size > existingQuad.size)
+                {
+                    toRemove.Add(existingQuad);
+                }
+            }
+
+            foreach (var quad in toRemove)
+            {
+                trackedQuads.Remove(quad);
+                Debug.Log($"→ Removed smaller Quad: {quad.width}x{quad.height} (turnTimer was {quad.turnTimer})");
+            }
+
+            // 새 Quad에 기존 turnTimer 유지
+            newQuad.turnTimer = maxTurnTimer;
+            newQuad.creationTurn = globalTurnCounter;
+            trackedQuads.Add(newQuad);
+            Debug.Log($"→ Expanded to {newQuad.width}x{newQuad.height} Quad (turnTimer={newQuad.turnTimer})");
+            return;
+        }
+
+        // 2. 병합 시도 (인접한 quad들과 함께)
         List<ChimeQuad> allRelatedQuads = new List<ChimeQuad>(overlappingQuads);
         allRelatedQuads.AddRange(adjacentQuads);
 
@@ -151,26 +197,17 @@ public class ChimePulseSystem : MonoBehaviour
 
         foreach (var quad in allRelatedQuads)
         {
-            Debug.Log($"[ProcessOverlappingQuads] Trying to merge with Quad {quad.width}x{quad.height}");
             bool canMerge = mergedQuad.CanMergeWith(quad);
-            Debug.Log($"[ProcessOverlappingQuads]   → CanMerge: {canMerge}");
-
             if (!canMerge)
             {
                 canMergeAll = false;
                 break;
             }
             mergedQuad = mergedQuad.MergeWith(quad, globalTurnCounter);
-            Debug.Log($"[ProcessOverlappingQuads]   → Merged! New size: {mergedQuad.width}x{mergedQuad.height} (size={mergedQuad.size})");
         }
 
-        // 기존 Quad들의 총 크기 계산
         int totalOldSize = allRelatedQuads.Sum(q => q.size);
 
-        Debug.Log($"[ProcessOverlappingQuads] canMergeAll={canMergeAll}, mergedQuad.size={mergedQuad.size}, newQuad.size={newQuad.size}, totalOldSize={totalOldSize}");
-        Debug.Log($"[ProcessOverlappingQuads] Merge condition: {canMergeAll} && {mergedQuad.size} > {totalOldSize} = {canMergeAll && mergedQuad.size > totalOldSize}");
-
-        // 병합 가능하고, 결과가 기존보다 크면 교체 (실제 확장된 경우만)
         if (canMergeAll && mergedQuad.size > totalOldSize)
         {
             foreach (var quad in allRelatedQuads)
@@ -180,54 +217,11 @@ public class ChimePulseSystem : MonoBehaviour
             }
 
             trackedQuads.Add(mergedQuad);
-            Debug.Log($"→ Expanded to {mergedQuad.width}x{mergedQuad.height} Quad (turnTimer={mergedQuad.turnTimer}, creationTurn={mergedQuad.creationTurn})");
-        }
-        // 병합 실패했지만 새 Quad가 기존 Quad 중 일부를 완전히 포함하는 경우
-        else if (!canMergeAll && newQuad.size >= 4)
-        {
-            // 새 Quad에 완전히 포함되는 기존 Quad들 찾기
-            List<ChimeQuad> containedQuads = new List<ChimeQuad>();
-            foreach (var existingQuad in overlappingQuads)
-            {
-                bool isContained = true;
-                foreach (var cell in existingQuad.cells)
-                {
-                    if (!newQuad.cells.Contains(cell))
-                    {
-                        isContained = false;
-                        break;
-                    }
-                }
-                if (isContained)
-                {
-                    containedQuads.Add(existingQuad);
-                }
-            }
-
-            // 포함된 Quad가 있으면 제거하고 새 Quad 추가
-            if (containedQuads.Count > 0)
-            {
-                // 포함된 Quad들 중 가장 오래된 것의 turnTimer 보존
-                int maxTurnTimer = 0;
-                foreach (var quad in containedQuads)
-                {
-                    maxTurnTimer = Mathf.Max(maxTurnTimer, quad.turnTimer);
-                    trackedQuads.Remove(quad);
-                    Debug.Log($"→ Removed contained Quad: {quad.width}x{quad.height} (turnTimer was {quad.turnTimer})");
-                }
-                newQuad.creationTurn = globalTurnCounter;
-                newQuad.turnTimer = maxTurnTimer; // 가장 오래된 Quad의 turnTimer 유지
-                trackedQuads.Add(newQuad);
-                Debug.Log($"→ Added new Quad {newQuad.width}x{newQuad.height} (replaced {containedQuads.Count} smaller quad(s), preserved turnTimer={maxTurnTimer})");
-            }
-            else
-            {
-                Debug.Log($"→ Cannot merge overlapping Quads or no expansion - keeping existing Quads");
-            }
+            Debug.Log($"→ Merged to {mergedQuad.width}x{mergedQuad.height} Quad (turnTimer={mergedQuad.turnTimer})");
         }
         else
         {
-            Debug.Log($"→ Cannot merge overlapping Quads or no expansion - keeping existing Quads");
+            Debug.Log($"→ No expansion possible - keeping existing Quads");
         }
     }
 

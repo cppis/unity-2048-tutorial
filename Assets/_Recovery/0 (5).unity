@@ -443,7 +443,7 @@ GameObject:
   - component: {fileID: 943529546}
   - component: {fileID: 943529545}
   m_Layer: 5
-  m_Name: ChimeGrid
+  m_Name: Grid
   m_TagString: Untagged
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0
@@ -477,9 +477,9 @@ MonoBehaviour:
   m_GameObject: {fileID: 943529543}
   m_Enabled: 1
   m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: 5b3f71a47dc17474688f8c8d5dedebb7, type: 3}
+  m_Script: {fileID: 11500000, guid: 942922698a886884a956782dd808dd36, type: 3}
   m_Name: 
-  m_EditorClassIdentifier: Assembly-CSharp::ChimeQuadDetector
+  m_EditorClassIdentifier: Assembly-CSharp::QubeQuadDetector
   grid: {fileID: 943529547}
 --- !u!114 &943529546
 MonoBehaviour:
@@ -490,9 +490,9 @@ MonoBehaviour:
   m_GameObject: {fileID: 943529543}
   m_Enabled: 1
   m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: 1cadeacb3c8af2a4e859a72c5c98e071, type: 3}
+  m_Script: {fileID: 11500000, guid: 9647b84d7ccfc804f9b8d913a80b10bb, type: 3}
   m_Name: 
-  m_EditorClassIdentifier: Assembly-CSharp::ChimePulseSystem
+  m_EditorClassIdentifier: Assembly-CSharp::QubePulseSystem
   grid: {fileID: 943529547}
   quadDetector: {fileID: 943529545}
 --- !u!114 &943529547
@@ -504,10 +504,10 @@ MonoBehaviour:
   m_GameObject: {fileID: 943529543}
   m_Enabled: 1
   m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: 3f2181eb07e3b0d4f8315b05b25a5f6a, type: 3}
+  m_Script: {fileID: 11500000, guid: 5f0add2723b378a49a305469ea391bcc, type: 3}
   m_Name: 
-  m_EditorClassIdentifier: Assembly-CSharp::ChimeGrid
-  cellPrefab: {fileID: 7189412026168442766, guid: 4496c04db0e8db14381e7ea6111f1fb8, type: 3}
+  m_EditorClassIdentifier: Assembly-CSharp::QubeGrid
+  cellPrefab: {fileID: 7189412026168442766, guid: f5de9bb9fc23d66468632d0ec58cae0e, type: 3}
   cellSize: 80
   spacing: 5
 --- !u!1 &952160598
@@ -555,26 +555,18 @@ MonoBehaviour:
   m_GameObject: {fileID: 952160598}
   m_Enabled: 1
   m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: 2166697502f940444a734a77916e0d3b, type: 3}
+  m_Script: {fileID: 11500000, guid: 554ed4d180da43f4f8208568c3b39ba8, type: 3}
   m_Name: 
-  m_EditorClassIdentifier: Assembly-CSharp::ChimeGameManager
+  m_EditorClassIdentifier: Assembly-CSharp::QubeGameManager
   grid: {fileID: 943529547}
   quadDetector: {fileID: 943529545}
   pulseSystem: {fileID: 943529546}
-  blockPrefab: {fileID: 4419134791091613415, guid: b9b185515e6e1164e817a2a9d4589153, type: 3}
+  blockPrefab: {fileID: 4419134791091613415, guid: 68589cd089e98794aa36a084698e4d22, type: 3}
   blockShapes:
-  - {fileID: 11400000, guid: 80a08c9d502db0643b13611c08e11150, type: 2}
-  - {fileID: 11400000, guid: b83ee2d4e81934143bd4e1d6d1b58731, type: 2}
-  - {fileID: 11400000, guid: 60a14b90decae19449cbf61820ed6a1b, type: 2}
-  - {fileID: 11400000, guid: 93f762a819d03a94e89044264b0f0092, type: 2}
-  - {fileID: 11400000, guid: 932d771a18538bb4bb6284da42431873, type: 2}
-  - {fileID: 11400000, guid: d09554c820bfc31438dabf7bd096b495, type: 2}
-  - {fileID: 11400000, guid: 1d5aacc9eb079fd4ab94aef30f860316, type: 2}
-  - {fileID: 11400000, guid: 6748cceeaefca3f4583be68adc862914, type: 2}
-  - {fileID: 11400000, guid: a59ed2ba4b940c34dbb7ad8d137dbf83, type: 2}
-  - {fileID: 11400000, guid: 3f4e25d8d02607542b60a411cb9d778c, type: 2}
-  - {fileID: 11400000, guid: 218fc985580594a488d642d736d483fa, type: 2}
-  - {fileID: 11400000, guid: fac3fe93c19037e438ce72bc6031e310, type: 2}
+  - {fileID: 11400000, guid: b5ebd6e589e83ec4481abcba14d0e91a, type: 2}
+  - {fileID: 11400000, guid: 6e77652d8aa2af74fbf025b14c6eb322, type: 2}
+  - {fileID: 11400000, guid: 6218c73e864b3534787a03a171a92239, type: 2}
+  - {fileID: 11400000, guid: c40fd581e2497e7428df6ea4e47e13a1, type: 2}
   scoreText: {fileID: 1767917374}
   turnCounterText: {fileID: 374273168}
   gameOverText: {fileID: 0}

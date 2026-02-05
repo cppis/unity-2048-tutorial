@@ -77,6 +77,11 @@ public class ChimeCell : MonoBehaviour
         borderImage.color = Color.yellow;
         borderImage.raycastTarget = false;
 
+        // Canvas 추가하여 렌더링 순서를 높임
+        Canvas canvas = borderObj.AddComponent<Canvas>();
+        canvas.overrideSorting = true;
+        canvas.sortingOrder = 500;
+
         return borderImage;
     }
 

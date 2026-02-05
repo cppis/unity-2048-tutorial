@@ -7,66 +7,100 @@ public class ChimeBlockShape : ScriptableObject
     public Vector2Int[] cells; // 블록을 구성하는 셀의 상대 좌표
     public Color blockColor;
 
-    // 기본 블록 모양 정의
-    public static Vector2Int[] GetLShape()
+    // 펜토미노 (5칸)
+    public static Vector2Int[] GetF_Pentomino()
     {
-        return new Vector2Int[]
-        {
-            new Vector2Int(0, 0),
-            new Vector2Int(1, 0),
-            new Vector2Int(0, 1)
+        return new Vector2Int[] {
+            new Vector2Int(0, 1), new Vector2Int(1, 1),
+            new Vector2Int(1, 0), new Vector2Int(2, 0), new Vector2Int(1, 2)
         };
     }
 
-    public static Vector2Int[] GetIShape()
+    public static Vector2Int[] GetI_Pentomino()
     {
-        return new Vector2Int[]
-        {
-            new Vector2Int(0, 0),
-            new Vector2Int(1, 0),
-            new Vector2Int(2, 0)
+        return new Vector2Int[] {
+            new Vector2Int(0, 0), new Vector2Int(0, 1),
+            new Vector2Int(0, 2), new Vector2Int(0, 3), new Vector2Int(0, 4)
         };
     }
 
-    public static Vector2Int[] GetTShape()
+    public static Vector2Int[] GetL_Pentomino()
     {
-        return new Vector2Int[]
-        {
-            new Vector2Int(0, 0),
-            new Vector2Int(1, 0),
-            new Vector2Int(2, 0),
-            new Vector2Int(1, 1)
+        return new Vector2Int[] {
+            new Vector2Int(0, 0), new Vector2Int(0, 1),
+            new Vector2Int(0, 2), new Vector2Int(0, 3), new Vector2Int(1, 0)
         };
     }
 
-    public static Vector2Int[] GetOShape()
+    public static Vector2Int[] GetN_Pentomino()
     {
-        // 1x1 단일 블록
-        return new Vector2Int[]
-        {
-            new Vector2Int(0, 0)
+        return new Vector2Int[] {
+            new Vector2Int(0, 0), new Vector2Int(1, 0),
+            new Vector2Int(1, 1), new Vector2Int(2, 1), new Vector2Int(2, 2)
         };
     }
 
-    public static Vector2Int[] GetSShape()
+    public static Vector2Int[] GetP_Pentomino()
     {
-        return new Vector2Int[]
-        {
-            new Vector2Int(1, 0),
-            new Vector2Int(2, 0),
-            new Vector2Int(0, 1),
-            new Vector2Int(1, 1)
+        return new Vector2Int[] {
+            new Vector2Int(0, 0), new Vector2Int(1, 0),
+            new Vector2Int(0, 1), new Vector2Int(1, 1), new Vector2Int(0, 2)
         };
     }
 
-    public static Vector2Int[] GetZShape()
+    public static Vector2Int[] GetT_Pentomino()
     {
-        return new Vector2Int[]
-        {
-            new Vector2Int(0, 0),
-            new Vector2Int(1, 0),
-            new Vector2Int(1, 1),
-            new Vector2Int(2, 1)
+        return new Vector2Int[] {
+            new Vector2Int(0, 0), new Vector2Int(1, 0),
+            new Vector2Int(2, 0), new Vector2Int(1, 1), new Vector2Int(1, 2)
+        };
+    }
+
+    public static Vector2Int[] GetU_Pentomino()
+    {
+        return new Vector2Int[] {
+            new Vector2Int(0, 0), new Vector2Int(2, 0),
+            new Vector2Int(0, 1), new Vector2Int(1, 1), new Vector2Int(2, 1)
+        };
+    }
+
+    public static Vector2Int[] GetV_Pentomino()
+    {
+        return new Vector2Int[] {
+            new Vector2Int(0, 0), new Vector2Int(0, 1),
+            new Vector2Int(0, 2), new Vector2Int(1, 2), new Vector2Int(2, 2)
+        };
+    }
+
+    public static Vector2Int[] GetW_Pentomino()
+    {
+        return new Vector2Int[] {
+            new Vector2Int(0, 0), new Vector2Int(1, 0),
+            new Vector2Int(1, 1), new Vector2Int(2, 1), new Vector2Int(2, 2)
+        };
+    }
+
+    public static Vector2Int[] GetX_Pentomino()
+    {
+        return new Vector2Int[] {
+            new Vector2Int(1, 0), new Vector2Int(0, 1),
+            new Vector2Int(1, 1), new Vector2Int(2, 1), new Vector2Int(1, 2)
+        };
+    }
+
+    public static Vector2Int[] GetY_Pentomino()
+    {
+        return new Vector2Int[] {
+            new Vector2Int(0, 0), new Vector2Int(1, 0),
+            new Vector2Int(1, 1), new Vector2Int(1, 2), new Vector2Int(1, 3)
+        };
+    }
+
+    public static Vector2Int[] GetZ_Pentomino()
+    {
+        return new Vector2Int[] {
+            new Vector2Int(0, 0), new Vector2Int(1, 0),
+            new Vector2Int(1, 1), new Vector2Int(1, 2), new Vector2Int(2, 2)
         };
     }
 }

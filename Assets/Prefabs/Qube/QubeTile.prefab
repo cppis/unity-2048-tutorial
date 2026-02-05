@@ -148,7 +148,7 @@ GameObject:
   - component: {fileID: 4078548043748277475}
   - component: {fileID: 7280697964493053281}
   m_Layer: 5
-  m_Name: Tile
+  m_Name: QubeTile
   m_TagString: Untagged
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0

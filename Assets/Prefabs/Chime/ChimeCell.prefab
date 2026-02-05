@@ -11,9 +11,9 @@ GameObject:
   - component: {fileID: 9028170801929815108}
   - component: {fileID: 5430469637051286428}
   - component: {fileID: 5430469637051286429}
-  - component: {fileID: -5430469637051286427}
+  - component: {fileID: 5000847196609601251}
   m_Layer: 5
-  m_Name: Cell
+  m_Name: ChimeCell
   m_TagString: Untagged
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0
@@ -56,7 +56,7 @@ MonoBehaviour:
   m_Enabled: 1
   m_EditorHideFlags: 0
   m_Script: {fileID: 11500000, guid: fe87c0e1cc204ed48ad3b37840f39efc, type: 3}
-  m_Name:
+  m_Name: 
   m_EditorClassIdentifier: UnityEngine.UI::UnityEngine.UI.Image
   m_Material: {fileID: 0}
   m_Color: {r: 0.176, g: 0.204, b: 0.212, a: 1}
@@ -76,7 +76,7 @@ MonoBehaviour:
   m_FillOrigin: 0
   m_UseSpriteMesh: 0
   m_PixelsPerUnitMultiplier: 1
---- !u!114 &-5430469637051286427
+--- !u!114 &5000847196609601251
 MonoBehaviour:
   m_ObjectHideFlags: 0
   m_CorrespondingSourceObject: {fileID: 0}
@@ -85,9 +85,12 @@ MonoBehaviour:
   m_GameObject: {fileID: 7189412026168442766}
   m_Enabled: 1
   m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: e0797bb492f9b4346ac28033b2efb2d6, type: 3}
+  m_Script: {fileID: 11500000, guid: 215660c2b71947445bfd9f7163f696a0, type: 3}
   m_Name: 
-  m_EditorClassIdentifier: Assembly-CSharp::QubeCell
+  m_EditorClassIdentifier: Assembly-CSharp::ChimeCell
   coordinates: {x: 0, y: 0}
   isOccupied: 0
-  cellColor: {r: 0, g: 0, b: 0, a: 0}
+  cellColor: {r: 0.4245283, g: 0.41451585, b: 0.41451585, a: 0}
+  originalColor: {r: 0.1509434, g: 0.1509434, b: 0.1509434, a: 0}
+  clearTimer: 0
+  blockId: -1

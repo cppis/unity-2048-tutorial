@@ -78,6 +78,12 @@ public class ChimeGrid : MonoBehaviour
 
     private void CreateGrid()
     {
+        if (cellPrefab == null)
+        {
+            Debug.LogError("[ChimeGrid] cellPrefab이 할당되지 않았습니다! Inspector에서 ChimeCell prefab을 할당해주세요.");
+            return;
+        }
+
         // GridLayoutGroup은 왼쪽 아래에서 시작하여 오른쪽으로 진행
         // 따라서 y를 0부터 시작하여 위로 올라가면서 생성
         for (int y = 0; y < HEIGHT; y++)
@@ -93,6 +99,13 @@ public class ChimeGrid : MonoBehaviour
     {
         GameObject cellObj = Instantiate(cellPrefab, transform);
         ChimeCell cell = cellObj.GetComponent<ChimeCell>();
+
+        if (cell == null)
+        {
+            Debug.LogError($"[ChimeGrid] cellPrefab에 ChimeCell 컴포넌트가 없습니다! Prefab: {cellPrefab.name}");
+            Destroy(cellObj);
+            return null;
+        }
 
         cell.coordinates = new Vector2Int(x, y);
         cell.SetOccupied(false, Color.clear);
