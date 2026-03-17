@@ -48,6 +48,16 @@ public class QubeBlockShape : ScriptableObject
         };
     }
 
+    public static Vector2Int[] GetDShape()
+    {
+        // 1x2 도미노 블록
+        return new Vector2Int[]
+        {
+            new Vector2Int(0, 0),
+            new Vector2Int(1, 0)
+        };
+    }
+
     public static Vector2Int[] GetSShape()
     {
         return new Vector2Int[]

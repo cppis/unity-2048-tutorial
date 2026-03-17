@@ -17,6 +17,10 @@ public class QubeGameManager : MonoBehaviour
     [Header("Block Shapes")]
     public QubeBlockShape[] blockShapes;
 
+    [Header("Block Queue")]
+    public QubeBlockQueue blockQueue;
+    public QubeBlockPreviewUI previewUI;
+
     [Header("UI")]
     public TextMeshProUGUI scoreText;
     public TextMeshProUGUI turnCounterText;
@@ -69,6 +73,12 @@ public class QubeGameManager : MonoBehaviour
             gameOverText.gameObject.SetActive(false);
         }
 
+        // 블록 큐 초기화
+        if (blockQueue != null)
+        {
+            blockQueue.Initialize(blockShapes, Mathf.Min(5, blockShapes.Length));
+        }
+
         UpdateUI();
         SpawnNewBlock();
     }
@@ -81,8 +91,24 @@ public class QubeGameManager : MonoBehaviour
             return;
         }
 
-        // 랜덤 블록 선택 (기본 4종만 사용: L, I, T, 1x1)
-        QubeBlockShape randomShape = blockShapes[Random.Range(0, Mathf.Min(4, blockShapes.Length))];
+        // 큐에서 다음 블록 가져오기 (사전 회전 적용됨)
+        QubeBlockEntry entry;
+        if (blockQueue != null)
+        {
+            entry = blockQueue.Dequeue();
+        }
+        else
+        {
+            // 폴백: 큐 없이 랜덤 생성
+            QubeBlockShape shape = blockShapes[Random.Range(0, Mathf.Min(4, blockShapes.Length))];
+            entry = new QubeBlockEntry(shape, (Vector2Int[])shape.cells.Clone());
+        }
+
+        // 미리보기 UI 갱신
+        if (previewUI != null && blockQueue != null)
+        {
+            previewUI.UpdatePreview(blockQueue.GetPreview());
+        }
 
         // 블록 생성 (Canvas의 자식으로 생성)
         GameObject blockObj = Instantiate(blockPrefab, grid.transform.parent);
@@ -90,13 +116,9 @@ public class QubeGameManager : MonoBehaviour
 
         if (currentBlock != null)
         {
-            // 스케일을 명시적으로 1로 설정
             blockObj.transform.localScale = Vector3.one;
+            currentBlock.Initialize(entry.shape, entry.rotatedCells, grid);
 
-            currentBlock.Initialize(randomShape, grid);
-            Debug.Log($"Block parent: {blockObj.transform.parent.name}, localScale: {blockObj.transform.localScale}");
-
-            // 그리드 전체에서 블록을 배치할 수 있는 위치가 있는지 확인
             if (!currentBlock.CanPlaceAnywhere())
             {
                 Debug.Log("Cannot place block anywhere on the grid - Game Over!");
@@ -144,16 +166,6 @@ public class QubeGameManager : MonoBehaviour
         else if (Input.GetKeyDown(KeyCode.S) || Input.GetKeyDown(KeyCode.DownArrow))
         {
             currentBlock.Move(Vector2Int.down);
-        }
-
-        // 회전 (Q: 반시계, E: 시계) - 한 번 클릭 시 한 번만 회전
-        if (Input.GetKeyDown(KeyCode.Q))
-        {
-            currentBlock.Rotate(clockwise: false);
-        }
-        else if (Input.GetKeyDown(KeyCode.E))
-        {
-            currentBlock.Rotate(clockwise: true);
         }
 
         // 배치 (Space)

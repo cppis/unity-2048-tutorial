@@ -8,7 +8,7 @@ public class QubePulseSystem : MonoBehaviour
     public QubeGrid grid;
     public QubeQuadDetector quadDetector;
 
-    private const int PULSE_INTERVAL = 8;
+    private const int PULSE_INTERVAL = 5;
     private const float BONUS_MULTIPLIER_TWO = 1.5f;
     private const float BONUS_MULTIPLIER_THREE_PLUS = 2.0f;
     private const float REMOVAL_DELAY = 0.3f;

@@ -13,26 +13,12 @@ public class QubeBlock : MonoBehaviour
 
     private static int nextBlockId = 0; // Static counter for unique block IDs
 
-    private static readonly Vector2Int[] WALL_KICK_OFFSETS = new Vector2Int[]
-    {
-        new Vector2Int(0, 0),   // 원래 위치
-        new Vector2Int(-1, 0),  // 왼쪽
-        new Vector2Int(1, 0),   // 오른쪽
-        new Vector2Int(0, 1),   // 위
-        new Vector2Int(0, -1),  // 아래
-        new Vector2Int(-1, 1),  // 왼쪽 위
-        new Vector2Int(1, 1),   // 오른쪽 위
-        new Vector2Int(-1, -1), // 왼쪽 아래
-        new Vector2Int(1, -1)   // 오른쪽 아래
-    };
-
     public QubeBlockShape shape;
     public Vector2Int position;
     public QubeGrid grid;
 
     private Vector2Int[] currentCells;
     private List<GameObject> cellObjects = new List<GameObject>();
-    private int rotation = 0;
 
     public void Initialize(QubeBlockShape blockShape, QubeGrid qubeGrid)
     {
@@ -43,7 +29,19 @@ public class QubeBlock : MonoBehaviour
         position = CalculateSpawnPosition();
         InitializeRectTransform();
         CreateVisuals();
-        UpdatePlacementVisualFeedback(); // 초기 시각적 피드백 설정
+        UpdatePlacementVisualFeedback();
+    }
+
+    public void Initialize(QubeBlockShape blockShape, Vector2Int[] preRotatedCells, QubeGrid qubeGrid)
+    {
+        shape = blockShape;
+        grid = qubeGrid;
+        currentCells = (Vector2Int[])preRotatedCells.Clone();
+
+        position = CalculateSpawnPosition();
+        InitializeRectTransform();
+        CreateVisuals();
+        UpdatePlacementVisualFeedback();
     }
 
     private Vector2Int CalculateSpawnPosition()
@@ -101,7 +99,8 @@ public class QubeBlock : MonoBehaviour
         rect.anchorMin = new Vector2(ANCHOR_CENTER, ANCHOR_CENTER);
         rect.anchorMax = new Vector2(ANCHOR_CENTER, ANCHOR_CENTER);
         rect.pivot = new Vector2(ANCHOR_CENTER, ANCHOR_CENTER);
-        rect.sizeDelta = new Vector2(grid.cellSize, grid.cellSize);
+        float fullSize = grid.cellSize + grid.spacing;
+        rect.sizeDelta = new Vector2(fullSize, fullSize);
         rect.localScale = Vector3.one;
     }
 
@@ -189,48 +188,25 @@ public class QubeBlock : MonoBehaviour
         }
     }
 
-    public void Rotate(bool clockwise = true)
+    /// <summary>
+    /// 셀 배열에 시계방향 회전을 지정 횟수만큼 적용합니다.
+    /// 블록 큐에서 사전 회전된 블록 생성 시 사용됩니다.
+    /// </summary>
+    public static Vector2Int[] ApplyRotation(Vector2Int[] cells, int rotationCount)
     {
-        Vector2Int[] rotatedCells = CalculateRotatedCells(clockwise);
+        Vector2Int[] result = (Vector2Int[])cells.Clone();
+        rotationCount = ((rotationCount % ROTATION_COUNT) + ROTATION_COUNT) % ROTATION_COUNT;
 
-        if (TryRotateWithWallKick(rotatedCells, clockwise))
+        for (int r = 0; r < rotationCount; r++)
         {
-            currentCells = rotatedCells;
-            CreateVisuals();
-            UpdatePlacementVisualFeedback(); // 회전 후 피드백 업데이트
-        }
-    }
-
-    private Vector2Int[] CalculateRotatedCells(bool clockwise)
-    {
-        Vector2Int[] rotatedCells = new Vector2Int[currentCells.Length];
-
-        for (int i = 0; i < currentCells.Length; i++)
-        {
-            Vector2Int cell = currentCells[i];
-            rotatedCells[i] = clockwise
-                ? new Vector2Int(cell.y, -cell.x)   // 시계방향
-                : new Vector2Int(-cell.y, cell.x);  // 반시계방향
-        }
-
-        return rotatedCells;
-    }
-
-    private bool TryRotateWithWallKick(Vector2Int[] rotatedCells, bool clockwise)
-    {
-        foreach (var offset in WALL_KICK_OFFSETS)
-        {
-            Vector2Int testPos = position + offset;
-
-            if (IsPositionValid(testPos, rotatedCells, checkOccupancy: false))
+            for (int i = 0; i < result.Length; i++)
             {
-                position = testPos;
-                rotation = (rotation + (clockwise ? 1 : 3)) % ROTATION_COUNT;
-                return true;
+                Vector2Int cell = result[i];
+                result[i] = new Vector2Int(cell.y, -cell.x); // 시계방향 90°
             }
         }
 
-        return false;
+        return result;
     }
 
     public void Place()
@@ -249,6 +225,13 @@ public class QubeBlock : MonoBehaviour
         Color placedColor = Color.HSVToRGB(h, s, v);
         placedColor.a = 1f;
 
+        // 글로벌 좌표 셋 (채움 조각 판정용)
+        HashSet<Vector2Int> globalPosSet = new HashSet<Vector2Int>();
+        for (int i = 0; i < currentCells.Length; i++)
+        {
+            globalPosSet.Add(position + currentCells[i]);
+        }
+
         for (int i = 0; i < currentCells.Length; i++)
         {
             Vector2Int globalPos = position + currentCells[i];
@@ -256,6 +239,10 @@ public class QubeBlock : MonoBehaviour
             grid.SetCellOccupied(globalPos, true, placedColor, false, blockId);
 
             GameObject cellObj = cellObjects[i];
+
+            // 배치 시 셀 크기를 cellSize로 축소 (간격으로 블록 구분)
+            RectTransform cellRect = cellObj.GetComponent<RectTransform>();
+            cellRect.sizeDelta = new Vector2(grid.cellSize, grid.cellSize);
 
             // 배치된 블록의 색상을 변경
             Image cellImage = cellObj.GetComponent<Image>();
@@ -268,8 +255,55 @@ public class QubeBlock : MonoBehaviour
             cellObj.transform.SetParent(placedContainer, worldPositionStays: true);
         }
 
+        // 같은 블록 내 인접 셀 사이에 채움 조각 생성 (간격 메우기)
+        float cellStep = grid.cellSize + grid.spacing;
+        foreach (Vector2Int pos in globalPosSet)
+        {
+            // 오른쪽 인접 확인
+            Vector2Int right = pos + Vector2Int.right;
+            if (globalPosSet.Contains(right))
+            {
+                CreateFillPiece(pos, right, true, cellStep, placedColor, placedContainer);
+            }
+            // 위쪽 인접 확인
+            Vector2Int up = pos + Vector2Int.up;
+            if (globalPosSet.Contains(up))
+            {
+                CreateFillPiece(pos, up, false, cellStep, placedColor, placedContainer);
+            }
+        }
+
         cellObjects.Clear();
         Destroy(gameObject);
+    }
+
+    private void CreateFillPiece(Vector2Int from, Vector2Int to, bool horizontal, float cellStep, Color color, Transform container)
+    {
+        GameObject fill = new GameObject($"Fill_{from.x}_{from.y}_{to.x}_{to.y}");
+        fill.transform.SetParent(container, false);
+
+        Image img = fill.AddComponent<Image>();
+        img.color = color;
+        img.raycastTarget = false;
+
+        RectTransform rect = fill.GetComponent<RectTransform>();
+        rect.anchorMin = new Vector2(ANCHOR_CENTER, ANCHOR_CENTER);
+        rect.anchorMax = new Vector2(ANCHOR_CENTER, ANCHOR_CENTER);
+        rect.pivot = new Vector2(ANCHOR_CENTER, ANCHOR_CENTER);
+
+        // 두 셀의 중간 위치 계산
+        Vector2 posA = CalculateCellPosition(from, cellStep);
+        Vector2 posB = CalculateCellPosition(to, cellStep);
+        rect.anchoredPosition = (posA + posB) / 2f;
+
+        if (horizontal)
+        {
+            rect.sizeDelta = new Vector2(grid.spacing, grid.cellSize);
+        }
+        else
+        {
+            rect.sizeDelta = new Vector2(grid.cellSize, grid.spacing);
+        }
     }
 
     public Vector2Int[] GetGlobalPositions()

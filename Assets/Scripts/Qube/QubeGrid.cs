@@ -3,8 +3,8 @@ using UnityEngine.UI;
 
 public class QubeGrid : MonoBehaviour
 {
-    public const int WIDTH = 12;
-    public const int HEIGHT = 9;
+    public const int WIDTH = 10;
+    public const int HEIGHT = 8;
 
     private const float ANCHOR_CENTER = 0.5f;
     private const string PLACED_BLOCKS_CONTAINER_NAME = "PlacedBlocks";
@@ -162,6 +162,9 @@ public class QubeGrid : MonoBehaviour
         {
             Destroy(child.gameObject);
         }
+
+        // 관련 채움 조각도 제거
+        RemoveFillPieces(coords);
     }
 
     public Transform GetPlacedBlocksContainer()
@@ -191,6 +194,21 @@ public class QubeGrid : MonoBehaviour
         foreach (Transform child in placedBlocksContainer.transform)
         {
             Destroy(child.gameObject);
+        }
+    }
+
+
+    public void RemoveFillPieces(Vector2Int coords)
+    {
+        // 해당 좌표를 포함하는 Fill 오브젝트 제거
+        string pattern = $"_{coords.x}_{coords.y}";
+        for (int i = placedBlocksContainer.transform.childCount - 1; i >= 0; i--)
+        {
+            Transform child = placedBlocksContainer.transform.GetChild(i);
+            if (child.name.StartsWith("Fill_") && child.name.Contains(pattern))
+            {
+                Destroy(child.gameObject);
+            }
         }
     }
 }

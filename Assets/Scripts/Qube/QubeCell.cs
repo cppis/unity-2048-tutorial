@@ -8,8 +8,8 @@ public class QubeCell : MonoBehaviour
     private const float TIMER_TEXT_SIZE = 60f;
     private const int TIMER_FONT_SIZE_NORMAL = 36;
     private const int TIMER_FONT_SIZE_CENTER = 72;
-    private const int CLEAR_TIMER_DURATION = 8;
-    private const float OUTLINE_THICKNESS = 6f; // 외곽선 두께
+    private const int CLEAR_TIMER_DURATION = 3;
+    private const float OUTLINE_THICKNESS = 6f; // Quad 외곽선 두께
 
     private static readonly Color EMPTY_COLOR = new Color(0.176f, 0.204f, 0.212f, 1f);
     private static readonly Color CLEARED_COLOR = new Color(0.08f, 0.1f, 0.11f, 1f);
@@ -24,11 +24,12 @@ public class QubeCell : MonoBehaviour
     private Image image;
     private TextMeshProUGUI turnTimerText;
 
-    // 4개의 변 (상하좌우)
+    // 4개의 변 (상하좌우) - Quad 하이라이트용
     private Image topBorder;
     private Image bottomBorder;
     private Image leftBorder;
     private Image rightBorder;
+
 
     private void Awake()
     {
@@ -44,15 +45,33 @@ public class QubeCell : MonoBehaviour
 
     private void CreateBorders()
     {
+        // Quad 외곽선 컨테이너 (Canvas override로 PlacedBlocks 위에 렌더링)
+        GameObject borderContainer = new GameObject("QuadBorders");
+        borderContainer.transform.SetParent(transform, false);
+
+        RectTransform containerRect = borderContainer.AddComponent<RectTransform>();
+        containerRect.anchorMin = Vector2.zero;
+        containerRect.anchorMax = Vector2.one;
+        containerRect.offsetMin = Vector2.zero;
+        containerRect.offsetMax = Vector2.zero;
+
+        Canvas borderCanvas = borderContainer.AddComponent<Canvas>();
+        borderCanvas.overrideSorting = true;
+        borderCanvas.sortingOrder = 500;
+
+        CanvasGroup borderCanvasGroup = borderContainer.AddComponent<CanvasGroup>();
+        borderCanvasGroup.blocksRaycasts = false;
+        borderCanvasGroup.interactable = false;
+
         // 셀의 크기를 가져옴 (RectTransform 사용)
         RectTransform cellRect = GetComponent<RectTransform>();
         Vector2 cellSize = cellRect.sizeDelta;
 
-        // 4개의 변 생성
-        topBorder = CreateBorderImage("TopBorder", cellSize.x, OUTLINE_THICKNESS, 0, cellSize.y / 2);
-        bottomBorder = CreateBorderImage("BottomBorder", cellSize.x, OUTLINE_THICKNESS, 0, -cellSize.y / 2);
-        leftBorder = CreateBorderImage("LeftBorder", OUTLINE_THICKNESS, cellSize.y, -cellSize.x / 2, 0);
-        rightBorder = CreateBorderImage("RightBorder", OUTLINE_THICKNESS, cellSize.y, cellSize.x / 2, 0);
+        // 4개의 변 생성 (컨테이너의 자식으로)
+        topBorder = CreateBorderImage("TopBorder", cellSize.x, OUTLINE_THICKNESS, 0, cellSize.y / 2, borderContainer.transform);
+        bottomBorder = CreateBorderImage("BottomBorder", cellSize.x, OUTLINE_THICKNESS, 0, -cellSize.y / 2, borderContainer.transform);
+        leftBorder = CreateBorderImage("LeftBorder", OUTLINE_THICKNESS, cellSize.y, -cellSize.x / 2, 0, borderContainer.transform);
+        rightBorder = CreateBorderImage("RightBorder", OUTLINE_THICKNESS, cellSize.y, cellSize.x / 2, 0, borderContainer.transform);
 
         // 초기에는 모두 비활성화
         topBorder.enabled = false;
@@ -61,10 +80,10 @@ public class QubeCell : MonoBehaviour
         rightBorder.enabled = false;
     }
 
-    private Image CreateBorderImage(string name, float width, float height, float xPos, float yPos)
+    private Image CreateBorderImage(string name, float width, float height, float xPos, float yPos, Transform parent = null)
     {
         GameObject borderObj = new GameObject(name);
-        borderObj.transform.SetParent(transform, false);
+        borderObj.transform.SetParent(parent ?? transform, false);
 
         RectTransform rectTransform = borderObj.AddComponent<RectTransform>();
         rectTransform.anchorMin = new Vector2(ANCHOR_CENTER, ANCHOR_CENTER);
@@ -195,8 +214,8 @@ public class QubeCell : MonoBehaviour
     private void SetClearedState()
     {
         clearTimer = CLEAR_TIMER_DURATION;
-        originalColor = CLEARED_COLOR;
-        SetColor(CLEARED_COLOR);
+        // 초기 색상: CLEARED_COLOR (어두운 색)에서 시작
+        UpdateClearedColor();
     }
 
     private void SetNormalEmptyState()
@@ -210,13 +229,24 @@ public class QubeCell : MonoBehaviour
         if (clearTimer > 0)
         {
             clearTimer--;
-
-            if (clearTimer == 0)
-            {
-                originalColor = EMPTY_COLOR;
-                SetColor(EMPTY_COLOR);
-            }
+            UpdateClearedColor();
         }
+    }
+
+    private void UpdateClearedColor()
+    {
+        if (clearTimer <= 0)
+        {
+            originalColor = EMPTY_COLOR;
+            SetColor(EMPTY_COLOR);
+            return;
+        }
+
+        // clearTimer: 3→2→1→0 (3이 가장 어둡고, 0에서 원래색 복원)
+        float t = 1f - (float)clearTimer / CLEAR_TIMER_DURATION;
+        Color blended = Color.Lerp(CLEARED_COLOR, EMPTY_COLOR, t);
+        originalColor = blended;
+        SetColor(blended);
     }
 
     public void SetOutline(bool top, bool bottom, bool left, bool right, Color? outlineColor = null)
