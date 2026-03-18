@@ -10,13 +10,12 @@ MonoBehaviour:
   m_Enabled: 1
   m_EditorHideFlags: 0
   m_Script: {fileID: 11500000, guid: f2d15440a8dcc604db21ed868cdb915d, type: 3}
-  m_Name: BlockShape_9
+  m_Name: BlockShape_12
   m_EditorClassIdentifier: Assembly-CSharp::QubeBlockShape
-  blockName: 9
+  blockName: 12
   cells:
   - {x: 1, y: 0}
   - {x: 0, y: 1}
   - {x: 1, y: 1}
-  - {x: 2, y: 1}
-  - {x: 1, y: 2}
-  blockColor: {r: 0, g: 0.82, b: 1, a: 1}
+  - {x: 0, y: 2}
+  blockColor: {r: 0.24, g: 0.6, b: 0.85, a: 1}

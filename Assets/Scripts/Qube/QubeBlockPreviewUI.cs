@@ -19,8 +19,6 @@ public class QubeBlockPreviewUI : MonoBehaviour
 
     public System.Action<int> OnSlotDragStarted;
 
-    // 회전 틱 사운드
-
     private List<RectTransform> slotContainers = new List<RectTransform>();
     private Coroutine rotateCoroutine;
     private QubeAudio qubeAudio;
@@ -98,15 +96,15 @@ public class QubeBlockPreviewUI : MonoBehaviour
         }
     }
 
-    /// <summary>
-    /// 첫 번째 슬롯에 회전 애니메이션을 적용한 후 프리뷰를 갱신합니다.
-    /// direction: 1=시계(우), -1=반시계(좌)
-    /// </summary>
     public void SetAudio(QubeAudio audio)
     {
         qubeAudio = audio;
     }
 
+    /// <summary>
+    /// 첫 번째 슬롯에 회전 애니메이션을 적용한 후 프리뷰를 갱신합니다.
+    /// direction: 1=시계(우), -1=반시계(좌)
+    /// </summary>
     public void AnimateRotateFirst(QubeBlockEntry[] entries, int direction)
     {
         if (rotateCoroutine != null)

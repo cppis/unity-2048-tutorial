@@ -19,12 +19,20 @@ public class QubeBlockShape : ScriptableObject
     public static readonly Color COLOR_GOLD    = new Color(1.00f, 0.84f, 0.00f); // #FFD700
     public static readonly Color COLOR_SKY     = new Color(0.40f, 0.69f, 1.00f); // #66B0FF
     public static readonly Color COLOR_ROSE    = new Color(0.91f, 0.35f, 0.65f); // #E859A6
+    public static readonly Color COLOR_MINT    = new Color(0.40f, 0.90f, 0.80f); // #66E6CC
+    public static readonly Color COLOR_PEACH   = new Color(1.00f, 0.60f, 0.40f); // #FF9966
+    public static readonly Color COLOR_INDIGO  = new Color(0.40f, 0.35f, 0.80f); // #6659CC
+    public static readonly Color COLOR_LEMON   = new Color(0.90f, 0.90f, 0.20f); // #E6E633
+    public static readonly Color COLOR_SALMON  = new Color(0.98f, 0.50f, 0.45f); // #FA807A
+    public static readonly Color COLOR_AZURE   = new Color(0.24f, 0.60f, 0.85f); // #3D99D9
 
     private static readonly Color[] PALETTE = new Color[]
     {
         COLOR_CYAN, COLOR_MAGENTA, COLOR_LIME, COLOR_AMBER,
         COLOR_PURPLE, COLOR_CORAL, COLOR_TEAL,
-        COLOR_GOLD, COLOR_SKY, COLOR_ROSE
+        COLOR_GOLD, COLOR_SKY, COLOR_ROSE,
+        COLOR_MINT, COLOR_PEACH, COLOR_INDIGO, COLOR_LEMON,
+        COLOR_SALMON, COLOR_AZURE
     };
 
     /// <summary>
@@ -145,6 +153,98 @@ public class QubeBlockShape : ScriptableObject
             new Vector2Int(1, 1),
             new Vector2Int(2, 1),
             new Vector2Int(1, 2)
+        };
+    }
+
+    public static Vector2Int[] GetFShape()
+    {
+        // 비대칭 계단형
+        //  ##.
+        //  .#.
+        //  .#
+        return new Vector2Int[]
+        {
+            new Vector2Int(0, 2),
+            new Vector2Int(1, 2),
+            new Vector2Int(1, 1),
+            new Vector2Int(1, 0),
+            new Vector2Int(2, 0)
+        };
+    }
+
+    public static Vector2Int[] GetUShape()
+    {
+        // U자형
+        //  #.#
+        //  ###
+        return new Vector2Int[]
+        {
+            new Vector2Int(0, 0),
+            new Vector2Int(1, 0),
+            new Vector2Int(2, 0),
+            new Vector2Int(0, 1),
+            new Vector2Int(2, 1)
+        };
+    }
+
+    public static Vector2Int[] GetWShape()
+    {
+        // 지그재그 계단
+        //  .#
+        //  ##
+        //  #.
+        return new Vector2Int[]
+        {
+            new Vector2Int(0, 0),
+            new Vector2Int(0, 1),
+            new Vector2Int(1, 1),
+            new Vector2Int(1, 2)
+        };
+    }
+
+    public static Vector2Int[] GetYShape()
+    {
+        // 비대칭 T 변형
+        //  .#
+        //  ##
+        //  .#
+        return new Vector2Int[]
+        {
+            new Vector2Int(1, 0),
+            new Vector2Int(0, 1),
+            new Vector2Int(1, 1),
+            new Vector2Int(1, 2)
+        };
+    }
+
+    public static Vector2Int[] GetFmShape()
+    {
+        // F의 거울상
+        //  .##
+        //  .#.
+        //  #.
+        return new Vector2Int[]
+        {
+            new Vector2Int(1, 2),
+            new Vector2Int(2, 2),
+            new Vector2Int(1, 1),
+            new Vector2Int(0, 0),
+            new Vector2Int(1, 0)
+        };
+    }
+
+    public static Vector2Int[] GetWmShape()
+    {
+        // W의 거울상
+        //  #.
+        //  ##
+        //  .#
+        return new Vector2Int[]
+        {
+            new Vector2Int(1, 0),
+            new Vector2Int(0, 1),
+            new Vector2Int(1, 1),
+            new Vector2Int(0, 2)
         };
     }
 }

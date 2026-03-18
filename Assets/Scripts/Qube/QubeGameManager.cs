@@ -84,9 +84,7 @@ public class QubeGameManager : MonoBehaviour
         if (inputHandler == null)
         {
             inputHandler = FindObjectOfType<QubeInputHandler>();
-            if (inputHandler != null)
-                Debug.Log($"[GameManager] InputHandler auto-found: {inputHandler.gameObject.name}");
-            else
+            if (inputHandler == null)
                 Debug.LogWarning("[GameManager] InputHandler not found!");
         }
 
@@ -129,6 +127,15 @@ public class QubeGameManager : MonoBehaviour
         score = 0;
         isGameOver = false;
 
+        // 게임오버 오버레이 제거
+        Canvas canvas = GetComponentInParent<Canvas>();
+        if (canvas == null) canvas = FindObjectOfType<Canvas>();
+        if (canvas != null)
+        {
+            Transform overlay = canvas.transform.Find("GameOverOverlay");
+            if (overlay != null) Destroy(overlay.gameObject);
+        }
+
         if (difficulty != null)
         {
             grid.SetSize(difficulty.gridWidth, difficulty.gridHeight);
@@ -166,10 +173,21 @@ public class QubeGameManager : MonoBehaviour
         if (previewUI != null && blockQueue != null)
             previewUI.UpdatePreview(blockQueue.GetPreview());
 
-        // 게임오버 체크
+        // 배치 불가 체크 → 쿼드 폭파 또는 게임오버
         if (blockQueue != null && !CanAnyQueuedBlockPlace())
         {
-            GameOver();
+            if (pulseSystem.HasActiveQuads())
+            {
+                // 쿼드가 있으면 전부 폭파하여 공간 확보
+                pulseSystem.RemoveAllQuads();
+                UpdateUI();
+                // 폭파 후 재검사는 다음 EnterQubeControl에서 수행
+                StartCoroutine(RecheckAfterBlast());
+            }
+            else
+            {
+                GameOver();
+            }
         }
     }
 
@@ -237,6 +255,9 @@ public class QubeGameManager : MonoBehaviour
         {
             if (Input.GetKeyDown(KeyCode.R))
                 NewGame();
+            // 터치 또는 클릭으로 재시작
+            if (Input.GetMouseButtonDown(0) || (Input.touchCount > 0 && Input.GetTouch(0).phase == TouchPhase.Began))
+                NewGame();
             return;
         }
 
@@ -288,7 +309,6 @@ public class QubeGameManager : MonoBehaviour
     {
         if (inputHandler == null || currentBlock == null)
         {
-            Debug.Log($"[UpdateDraggingPhase] Null detected - inputHandler={inputHandler}, currentBlock={currentBlock}. Returning to QubeControl.");
             EnterQubeControl();
             return;
         }
@@ -358,6 +378,17 @@ public class QubeGameManager : MonoBehaviour
         EmitPlaceEffects(placedPositions, blockColor);
 
         EnterUpdatingQube();
+    }
+
+    private IEnumerator RecheckAfterBlast()
+    {
+        // 폭파 애니메이션 완료 대기
+        yield return new WaitForSeconds(1.0f);
+
+        if (blockQueue != null && !CanAnyQueuedBlockPlace())
+        {
+            GameOver();
+        }
     }
 
     private IEnumerator UpdateQubeCoroutine()
@@ -454,15 +485,22 @@ public class QubeGameManager : MonoBehaviour
     {
         if (blockQueue == null) return true;
 
-        QubeBlockEntry[] preview = blockQueue.GetPreview();
-        foreach (var entry in preview)
+        // 첫 번째(활성) 블록의 4가지 회전 모두 검사
+        QubeBlockEntry entry = blockQueue.Peek(0);
+        bool isGridEmpty = grid.IsGridEmpty();
+
+        for (int rot = 0; rot < 4; rot++)
         {
+            Vector2Int[] cells = QubeBlock.ApplyRotation(entry.rotatedCells, rot);
+
             for (int y = 0; y < QubeGrid.HEIGHT; y++)
             {
                 for (int x = 0; x < QubeGrid.WIDTH; x++)
                 {
                     bool valid = true;
-                    foreach (var cell in entry.rotatedCells)
+                    bool hasAdjacent = false;
+
+                    foreach (var cell in cells)
                     {
                         Vector2Int checkPos = new Vector2Int(x + cell.x, y + cell.y);
                         if (!grid.IsValidPosition(checkPos) || grid.IsCellOccupied(checkPos))
@@ -470,8 +508,14 @@ public class QubeGameManager : MonoBehaviour
                             valid = false;
                             break;
                         }
+                        if (!isGridEmpty && grid.HasAdjacentOccupied(checkPos))
+                        {
+                            hasAdjacent = true;
+                        }
                     }
-                    if (valid) return true;
+
+                    if (valid && (isGridEmpty || hasAdjacent))
+                        return true;
                 }
             }
         }
@@ -617,17 +661,93 @@ public class QubeGameManager : MonoBehaviour
     {
         isGameOver = true;
 
-        if (gameOverText != null)
-        {
-            gameOverText.text = $"GAME OVER!\nFinal Score: {score}\n\nPress R to Restart";
-            gameOverText.gameObject.SetActive(true);
-        }
-
         if (currentBlock != null)
         {
             Destroy(currentBlock.gameObject);
             currentBlock = null;
             if (inputHandler != null) inputHandler.ClearBlock();
+        }
+
+        StartCoroutine(GameOverSequence());
+    }
+
+    private IEnumerator GameOverSequence()
+    {
+        // Canvas 최상위에 흑백 오버레이 생성
+        Canvas canvas = GetComponentInParent<Canvas>();
+        if (canvas == null) canvas = FindObjectOfType<Canvas>();
+
+        GameObject overlayObj = null;
+        Image overlayImage = null;
+        GameObject textObj = null;
+        TextMeshProUGUI gameOverTmp = null;
+
+        if (canvas != null)
+        {
+            // 어두운 오버레이
+            overlayObj = new GameObject("GameOverOverlay");
+            overlayObj.transform.SetParent(canvas.transform, false);
+            overlayObj.transform.SetAsLastSibling();
+
+            RectTransform overlayRect = overlayObj.AddComponent<RectTransform>();
+            overlayRect.anchorMin = Vector2.zero;
+            overlayRect.anchorMax = Vector2.one;
+            overlayRect.offsetMin = Vector2.zero;
+            overlayRect.offsetMax = Vector2.zero;
+
+            overlayImage = overlayObj.AddComponent<Image>();
+            overlayImage.color = new Color(0f, 0f, 0f, 0f);
+            overlayImage.raycastTarget = true;
+
+            // Game Over 텍스트
+            textObj = new GameObject("GameOverText");
+            textObj.transform.SetParent(overlayObj.transform, false);
+
+            RectTransform textRect = textObj.AddComponent<RectTransform>();
+            textRect.anchorMin = new Vector2(0f, 0.3f);
+            textRect.anchorMax = new Vector2(1f, 0.7f);
+            textRect.offsetMin = Vector2.zero;
+            textRect.offsetMax = Vector2.zero;
+
+            gameOverTmp = textObj.AddComponent<TextMeshProUGUI>();
+            gameOverTmp.text = $"GAME OVER\n\n<size=70%>Score: {score}</size>\n<size=50%>Tap to Restart</size>";
+            gameOverTmp.fontSize = 72;
+            gameOverTmp.fontStyle = FontStyles.Bold;
+            gameOverTmp.alignment = TextAlignmentOptions.Center;
+            gameOverTmp.color = new Color(1f, 1f, 1f, 0f);
+            gameOverTmp.raycastTarget = false;
+            gameOverTmp.outlineWidth = 0.3f;
+            gameOverTmp.outlineColor = new Color(0f, 0f, 0f, 0.6f);
+
+            Canvas textCanvas = textObj.AddComponent<Canvas>();
+            textCanvas.overrideSorting = true;
+            textCanvas.sortingOrder = 3000;
+        }
+
+        // 페이드 인 애니메이션 (0.8초)
+        float fadeDuration = 0.8f;
+        float elapsed = 0f;
+
+        while (elapsed < fadeDuration)
+        {
+            elapsed += Time.deltaTime;
+            float t = Mathf.Clamp01(elapsed / fadeDuration);
+            float ease = t * t * (3f - 2f * t); // SmoothStep
+
+            if (overlayImage != null)
+                overlayImage.color = new Color(0.05f, 0.05f, 0.1f, ease * 0.75f);
+
+            if (gameOverTmp != null)
+                gameOverTmp.color = new Color(1f, 1f, 1f, ease);
+
+            yield return null;
+        }
+
+        // 기존 gameOverText도 업데이트 (R키 재시작용)
+        if (gameOverText != null)
+        {
+            gameOverText.text = "";
+            gameOverText.gameObject.SetActive(false);
         }
     }
 }

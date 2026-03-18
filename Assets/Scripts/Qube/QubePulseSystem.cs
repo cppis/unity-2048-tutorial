@@ -218,6 +218,31 @@ public class QubePulseSystem : MonoBehaviour
         trackedQuads.Clear();
     }
 
+    /// <summary>
+    /// 모든 활성 Quad를 일괄 소거합니다 (점수 + 이펙트 포함).
+    /// 배치 불가 시 폭파용.
+    /// </summary>
+    public void RemoveAllQuads()
+    {
+        if (trackedQuads.Count == 0) return;
+
+        List<QubeQuad> allQuads = new List<QubeQuad>(trackedQuads);
+        trackedQuads.Clear();
+
+        int baseScore = 0;
+        foreach (var q in allQuads)
+        {
+            baseScore += q.GetScore();
+        }
+
+        float multiplier = GetChainMultiplier(allQuads.Count);
+        int totalScore = Mathf.RoundToInt(baseScore * multiplier);
+
+        OnPulse?.Invoke(totalScore, allQuads);
+
+        StartCoroutine(CascadeRemoveChain(allQuads));
+    }
+
     private void RefreshQuads()
     {
         // 기존 Quad 목록 초기화 후 재감지

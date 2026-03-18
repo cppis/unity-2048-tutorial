@@ -295,6 +295,7 @@ public class QubeGrid : MonoBehaviour
     {
         ClearAllCells();
         ClearPlacedBlockVisuals();
+        UpdateCellVisuals();
         if (gridLines != null)
             gridLines.ClearAllOutlines();
     }

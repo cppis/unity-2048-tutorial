@@ -18,13 +18,16 @@ public class QubeBlock : MonoBehaviour
     public QubeGrid grid;
 
     private const float GHOST_ALPHA = 0.3f;
-    private const float GHOST_OUTLINE_WIDTH = 4.5f;
+    private const float GHOST_OUTLINE_WIDTH = 6.75f;
     private const float BEVEL_THICKNESS = 3f;
 
     // 드래그 시각 효과 상수
     private const float DRAG_SCALE = 1.1f;
     private const float DRAG_SHADOW_OFFSET = 8f;
     private const float DRAG_SHADOW_ALPHA = 0.3f;
+    private const float DRAG_GHOST_FILL_ALPHA = 0.15f;
+    private const float DRAG_GHOST_BORDER_WIDTH = 4.5f;
+    private const float DRAG_GHOST_BORDER_ALPHA = 0.7f;
 
     private Vector2Int[] currentCells;
     private List<GameObject> cellObjects = new List<GameObject>();
@@ -158,14 +161,14 @@ public class QubeBlock : MonoBehaviour
         RectTransform rect = GetComponent<RectTransform>();
         rect.anchoredPosition = localPoint;
 
-        // 셀들을 블록 중심 기준으로 재배치
-        float cellStep = grid.cellSize + grid.spacing;
-        for (int i = 0; i < currentCells.Length; i++)
+        // 그리드 밖 → 셀 + 고스트 숨기기
+        foreach (var cellObj in cellObjects)
         {
-            Vector2Int cell = currentCells[i];
-            RectTransform cellRect = cellObjects[i].GetComponent<RectTransform>();
-            cellRect.anchoredPosition = new Vector2(cell.x * cellStep, cell.y * cellStep);
-            cellObjects[i].SetActive(true);
+            cellObj.SetActive(false);
+        }
+        foreach (var ghostObj in ghostObjects)
+        {
+            if (ghostObj != null) ghostObj.SetActive(false);
         }
     }
 
@@ -600,9 +603,11 @@ public class QubeBlock : MonoBehaviour
 
     public void UpdatePlacementVisualFeedback()
     {
-        // 드래그 중에는 원본 색상 그대로 사용
-        Color visualColor = shape.blockColor;
+        // 드래그 중에는 고스트 색상 유지
+        if (isDragging)
+            return;
 
+        Color visualColor = shape.blockColor;
         foreach (var cellObj in cellObjects)
         {
             Image image = cellObj.GetComponent<Image>();
@@ -616,32 +621,93 @@ public class QubeBlock : MonoBehaviour
     // ==================== 드래그 시각 효과 ====================
 
     /// <summary>
-    /// 드래그 시작 시 개별 셀 스케일업 + 드롭 섀도우 생성
+    /// 드래그 시작 시 셀을 투명 고스트(반투명 채움 + 아웃라인 보더)로 전환
     /// </summary>
     public void StartDragVisual()
     {
         if (isDragging) return;
         isDragging = true;
 
-        // 부모가 아닌 개별 셀만 스케일 (부모 스케일은 위치를 왜곡시킴)
+        Color ghostFill = new Color(shape.blockColor.r, shape.blockColor.g, shape.blockColor.b, DRAG_GHOST_FILL_ALPHA);
+        Color ghostBorder = new Color(shape.blockColor.r, shape.blockColor.g, shape.blockColor.b, DRAG_GHOST_BORDER_ALPHA);
+
         foreach (var cellObj in cellObjects)
         {
-            cellObj.transform.localScale = Vector3.one * DRAG_SCALE;
+            // 셀 채움을 반투명으로
+            Image img = cellObj.GetComponent<Image>();
+            if (img != null)
+                img.color = ghostFill;
+
+            // 기존 베벨 제거
+            RemoveBevelChildren(cellObj);
+
+            // 아웃라인 보더 추가 (상하좌우 4변)
+            float fullSize = grid.cellSize + grid.spacing;
+            AddCellBorder(cellObj, fullSize, DRAG_GHOST_BORDER_WIDTH, ghostBorder);
         }
         CreateDragShadow();
     }
 
     /// <summary>
-    /// 드래그 종료 시 셀 스케일 복원 + 섀도우 제거
+    /// 드래그 종료 시 셀을 불투명 실제 블록으로 복원
     /// </summary>
     public void EndDragVisual()
     {
         isDragging = false;
         foreach (var cellObj in cellObjects)
         {
+            // 색상 복원
+            Image img = cellObj.GetComponent<Image>();
+            if (img != null)
+                img.color = shape.blockColor;
+
+            // 아웃라인 보더 제거 + 베벨 복원
+            RemoveBorderChildren(cellObj);
+            float fullSize = grid.cellSize + grid.spacing;
+            QubeBevel.AddBevel(cellObj, fullSize, BEVEL_THICKNESS);
+
             cellObj.transform.localScale = Vector3.one;
         }
         DestroyDragShadow();
+    }
+
+    private void AddCellBorder(GameObject cellObj, float size, float borderWidth, Color color)
+    {
+        // 상
+        CreateBorderEdge(cellObj.transform, "Border_T", 0f, (size - borderWidth) / 2f, size, borderWidth, color);
+        // 하
+        CreateBorderEdge(cellObj.transform, "Border_B", 0f, -(size - borderWidth) / 2f, size, borderWidth, color);
+        // 좌
+        CreateBorderEdge(cellObj.transform, "Border_L", -(size - borderWidth) / 2f, 0f, borderWidth, size, color);
+        // 우
+        CreateBorderEdge(cellObj.transform, "Border_R", (size - borderWidth) / 2f, 0f, borderWidth, size, color);
+    }
+
+    private void CreateBorderEdge(Transform parent, string name, float x, float y, float w, float h, Color color)
+    {
+        GameObject obj = new GameObject(name);
+        obj.transform.SetParent(parent, false);
+
+        Image img = obj.AddComponent<Image>();
+        img.color = color;
+        img.raycastTarget = false;
+
+        RectTransform rect = obj.GetComponent<RectTransform>();
+        rect.anchorMin = new Vector2(ANCHOR_CENTER, ANCHOR_CENTER);
+        rect.anchorMax = new Vector2(ANCHOR_CENTER, ANCHOR_CENTER);
+        rect.pivot = new Vector2(ANCHOR_CENTER, ANCHOR_CENTER);
+        rect.anchoredPosition = new Vector2(x, y);
+        rect.sizeDelta = new Vector2(w, h);
+    }
+
+    private void RemoveBorderChildren(GameObject cellObj)
+    {
+        for (int i = cellObj.transform.childCount - 1; i >= 0; i--)
+        {
+            Transform child = cellObj.transform.GetChild(i);
+            if (child.name.StartsWith("Border_"))
+                Destroy(child.gameObject);
+        }
     }
 
     private void CreateDragShadow()

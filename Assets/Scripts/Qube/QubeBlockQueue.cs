@@ -19,12 +19,12 @@ public class QubeBlockQueue : MonoBehaviour
 
     private Queue<QubeBlockEntry> queue = new Queue<QubeBlockEntry>();
     private QubeBlockShape[] availableShapes;
-    private int shapeCount = 4; // 기본 블록 4종 사용
+    private int shapeCount;
 
-    public void Initialize(QubeBlockShape[] shapes, int useShapeCount = 4)
+    public void Initialize(QubeBlockShape[] shapes, int useShapeCount = -1)
     {
         availableShapes = shapes;
-        shapeCount = Mathf.Min(useShapeCount, shapes.Length);
+        shapeCount = useShapeCount > 0 ? Mathf.Min(useShapeCount, shapes.Length) : shapes.Length;
         queue.Clear();
 
         for (int i = 0; i < QUEUE_SIZE; i++)

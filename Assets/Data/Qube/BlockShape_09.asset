@@ -10,12 +10,13 @@ MonoBehaviour:
   m_Enabled: 1
   m_EditorHideFlags: 0
   m_Script: {fileID: 11500000, guid: f2d15440a8dcc604db21ed868cdb915d, type: 3}
-  m_Name: BlockShape_8
+  m_Name: BlockShape_09
   m_EditorClassIdentifier: Assembly-CSharp::QubeBlockShape
-  blockName: Z
+  blockName: F
   cells:
-  - {x: 0, y: 0}
-  - {x: 1, y: 0}
+  - {x: 0, y: 2}
+  - {x: 1, y: 2}
   - {x: 1, y: 1}
-  - {x: 2, y: 1}
-  blockColor: {r: 1, g: 0.42, b: 0.42, a: 1}
+  - {x: 1, y: 0}
+  - {x: 2, y: 0}
+  blockColor: {r: 0.4, g: 0.9, b: 0.8, a: 1}
