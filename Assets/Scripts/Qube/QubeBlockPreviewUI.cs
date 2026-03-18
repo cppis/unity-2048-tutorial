@@ -10,6 +10,7 @@ public class QubeBlockPreviewUI : MonoBehaviour
     private const float MINI_CELL_SIZE = 22f;
     private const float MINI_CELL_SPACING = 2f;
     private const float FIRST_SLOT_SCALE = 1.3f;
+    private const float MINI_BEVEL_THICKNESS = 1.5f;
 
     public System.Action<int> OnSlotDragStarted;
 
@@ -49,8 +50,16 @@ public class QubeBlockPreviewUI : MonoBehaviour
 
             // 배경 (raycast 활성화로 터치/클릭 감지)
             Image bg = slotObj.AddComponent<Image>();
-            bg.color = new Color(0.12f, 0.14f, 0.15f, 0.8f);
+            bg.sprite = CreateRoundedRectSprite(64, 64, 8);
+            bg.type = Image.Type.Sliced;
+            bg.color = new Color(0.10f, 0.13f, 0.16f, 0.85f);
             bg.raycastTarget = true;
+
+            // 첫 번째 슬롯에 글로우 보더 추가
+            if (i == 0)
+            {
+                AddSlotGlowBorder(slotObj, rect);
+            }
 
             // 드래그 감지용 컴포넌트
             SlotDragHandler dragHandler = slotObj.AddComponent<SlotDragHandler>();
@@ -124,7 +133,72 @@ public class QubeBlockPreviewUI : MonoBehaviour
             Image img = cellObj.AddComponent<Image>();
             img.color = entry.shape.blockColor;
             img.raycastTarget = false;
+
+            // 미니셀 베벨
+            QubeBevel.AddBevel(cellObj, cellSize, MINI_BEVEL_THICKNESS);
         }
+    }
+
+    private Sprite CreateRoundedRectSprite(int width, int height, int radius)
+    {
+        Texture2D tex = new Texture2D(width, height, TextureFormat.RGBA32, false);
+        tex.filterMode = FilterMode.Bilinear;
+
+        Color fill = Color.white;
+        Color clear = new Color(1f, 1f, 1f, 0f);
+
+        for (int y = 0; y < height; y++)
+        {
+            for (int x = 0; x < width; x++)
+            {
+                // 모서리 라운딩 체크
+                bool inCorner = false;
+                int cx = 0, cy = 0;
+
+                if (x < radius && y < radius) { cx = radius; cy = radius; inCorner = true; }
+                else if (x >= width - radius && y < radius) { cx = width - radius; cy = radius; inCorner = true; }
+                else if (x < radius && y >= height - radius) { cx = radius; cy = height - radius; inCorner = true; }
+                else if (x >= width - radius && y >= height - radius) { cx = width - radius; cy = height - radius; inCorner = true; }
+
+                if (inCorner)
+                {
+                    float dist = Mathf.Sqrt((x - cx) * (x - cx) + (y - cy) * (y - cy));
+                    float alpha = Mathf.Clamp01(radius - dist + 0.5f);
+                    tex.SetPixel(x, y, new Color(1f, 1f, 1f, alpha));
+                }
+                else
+                {
+                    tex.SetPixel(x, y, fill);
+                }
+            }
+        }
+
+        tex.Apply();
+
+        // 9-slice용 border 설정
+        Vector4 border = new Vector4(radius, radius, radius, radius);
+        return Sprite.Create(tex, new Rect(0, 0, width, height), new Vector2(0.5f, 0.5f), 100f, 0, SpriteMeshType.FullRect, border);
+    }
+
+    private void AddSlotGlowBorder(GameObject slotObj, RectTransform slotRect)
+    {
+        GameObject glowObj = new GameObject("GlowBorder");
+        glowObj.transform.SetParent(slotObj.transform, false);
+
+        RectTransform glowRect = glowObj.AddComponent<RectTransform>();
+        glowRect.anchorMin = Vector2.zero;
+        glowRect.anchorMax = Vector2.one;
+        glowRect.offsetMin = new Vector2(-2f, -2f);
+        glowRect.offsetMax = new Vector2(2f, 2f);
+
+        Image glowImg = glowObj.AddComponent<Image>();
+        glowImg.sprite = CreateRoundedRectSprite(64, 64, 10);
+        glowImg.type = Image.Type.Sliced;
+        glowImg.color = new Color(0.00f, 0.82f, 1.00f, 0.25f); // 시안 글로우
+        glowImg.raycastTarget = false;
+
+        // 메인 슬롯 뒤에 배치
+        glowObj.transform.SetAsFirstSibling();
     }
 
     internal void NotifyDragStarted(int slotIndex)

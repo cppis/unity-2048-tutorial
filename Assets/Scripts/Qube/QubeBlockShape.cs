@@ -7,6 +7,34 @@ public class QubeBlockShape : ScriptableObject
     public Vector2Int[] cells; // 블록을 구성하는 셀의 상대 좌표
     public Color blockColor;
 
+    // ==================== 7색 팔레트 ====================
+
+    public static readonly Color COLOR_CYAN    = new Color(0.00f, 0.82f, 1.00f); // #00D2FF
+    public static readonly Color COLOR_MAGENTA = new Color(1.00f, 0.18f, 0.47f); // #FF2D78
+    public static readonly Color COLOR_LIME    = new Color(0.49f, 0.83f, 0.13f); // #7ED321
+    public static readonly Color COLOR_AMBER   = new Color(1.00f, 0.72f, 0.00f); // #FFB800
+    public static readonly Color COLOR_PURPLE  = new Color(0.61f, 0.35f, 0.71f); // #9B59B6
+    public static readonly Color COLOR_CORAL   = new Color(1.00f, 0.42f, 0.42f); // #FF6B6B
+    public static readonly Color COLOR_TEAL    = new Color(0.18f, 0.85f, 0.64f); // #2ED8A3
+
+    private static readonly Color[] PALETTE = new Color[]
+    {
+        COLOR_CYAN, COLOR_MAGENTA, COLOR_LIME, COLOR_AMBER,
+        COLOR_PURPLE, COLOR_CORAL, COLOR_TEAL
+    };
+
+    /// <summary>
+    /// blockShapes 배열에 팔레트 색상을 순서대로 적용합니다.
+    /// </summary>
+    public static void ApplyPalette(QubeBlockShape[] shapes)
+    {
+        if (shapes == null) return;
+        for (int i = 0; i < shapes.Length; i++)
+        {
+            shapes[i].blockColor = PALETTE[i % PALETTE.Length];
+        }
+    }
+
     // 기본 블록 모양 정의
     public static Vector2Int[] GetLShape()
     {

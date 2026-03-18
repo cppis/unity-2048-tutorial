@@ -28,7 +28,9 @@ public class QubeScoreFeedback : MonoBehaviour
         string text = comboCount >= 3
             ? $"x{multiplier:F1} AMAZING!"
             : $"x{multiplier:F1} COMBO!";
-        Color color = comboCount >= 3 ? new Color(1f, 0.4f, 0.2f) : new Color(1f, 0.85f, 0.2f);
+        Color color = comboCount >= 3
+            ? new Color(1.00f, 0.18f, 0.47f)   // 마젠타 (새 팔레트)
+            : new Color(1.00f, 0.72f, 0.00f);   // 앰버 (새 팔레트)
 
         GameObject combo = CreateTextObject(text, COMBO_FONT_SIZE, color, Vector2.zero);
         StartCoroutine(ComboAnimation(combo));
@@ -61,8 +63,20 @@ public class QubeScoreFeedback : MonoBehaviour
         tmp.alignment = TextAlignmentOptions.Center;
         tmp.color = color;
         tmp.raycastTarget = false;
-        tmp.outlineWidth = 0.3f;
-        tmp.outlineColor = Color.black;
+        tmp.outlineWidth = 0.4f;
+        tmp.outlineColor = new Color(0f, 0f, 0f, 0.8f);
+
+        // 글로우 효과 (TMP 언더레이)
+        tmp.ForceMeshUpdate();
+        Material mat = tmp.fontMaterial; // TMP는 인스턴스 복사본 반환
+        if (mat.HasProperty("_UnderlayColor"))
+        {
+            mat.EnableKeyword("UNDERLAY_ON");
+            mat.SetColor("_UnderlayColor", new Color(color.r, color.g, color.b, 0.4f));
+            mat.SetFloat("_UnderlayOffsetX", 0f);
+            mat.SetFloat("_UnderlayOffsetY", 0f);
+            mat.SetFloat("_UnderlaySoftness", 0.5f);
+        }
 
         Canvas canvas = textObj.AddComponent<Canvas>();
         canvas.overrideSorting = true;

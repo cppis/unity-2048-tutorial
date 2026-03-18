@@ -19,6 +19,7 @@ public class QubeBlock : MonoBehaviour
 
     private const float GHOST_ALPHA = 0.3f;
     private const float GHOST_OUTLINE_WIDTH = 3f;
+    private const float BEVEL_THICKNESS = 3f;
 
     private Vector2Int[] currentCells;
     private List<GameObject> cellObjects = new List<GameObject>();
@@ -107,6 +108,10 @@ public class QubeBlock : MonoBehaviour
 
         SetupCellRectTransform(cellObj.GetComponent<RectTransform>());
 
+        // 베벨 효과 추가
+        float fullSize = grid.cellSize + grid.spacing;
+        QubeBevel.AddBevel(cellObj, fullSize, BEVEL_THICKNESS);
+
         return cellObj;
     }
 
@@ -157,22 +162,30 @@ public class QubeBlock : MonoBehaviour
         }
     }
 
-    private Vector2 CalculateCellPosition(Vector2Int gridPos, float cellStep)
+    /// <summary>
+    /// 그리드 중심 기준 로컬 좌표 (PlacedBlocks 컨테이너 내부용)
+    /// </summary>
+    private Vector2 CalculateCellLocalPosition(Vector2Int gridPos, float cellStep)
     {
-        // GridLayoutGroup 기반 위치 계산
-        // 그리드 중앙이 (0,0)이고, 왼쪽 아래가 시작점
         float gridWidth = QubeGrid.WIDTH * grid.cellSize + (QubeGrid.WIDTH - 1) * grid.spacing;
         float gridHeight = QubeGrid.HEIGHT * grid.cellSize + (QubeGrid.HEIGHT - 1) * grid.spacing;
 
-        // 왼쪽 아래 모서리 위치
         float leftX = -gridWidth / 2f;
         float bottomY = -gridHeight / 2f;
 
-        // 각 셀의 중심 위치
         float xPos = leftX + gridPos.x * cellStep + grid.cellSize / 2f;
         float yPos = bottomY + gridPos.y * cellStep + grid.cellSize / 2f;
 
         return new Vector2(xPos, yPos);
+    }
+
+    /// <summary>
+    /// 캔버스 기준 글로벌 좌표 (드래그 중 블록 셀 위치용)
+    /// </summary>
+    private Vector2 CalculateCellPosition(Vector2Int gridPos, float cellStep)
+    {
+        Vector2 gridOffset = grid.GetComponent<RectTransform>().anchoredPosition;
+        return CalculateCellLocalPosition(gridPos, cellStep) + gridOffset;
     }
 
     public bool CanMove(Vector2Int direction)
@@ -398,13 +411,14 @@ public class QubeBlock : MonoBehaviour
 
         if (showGhost)
         {
+            Vector2 gridOffset = grid.GetComponent<RectTransform>().anchoredPosition;
             float cellStep = grid.cellSize + grid.spacing;
             float gw = QubeGrid.WIDTH * grid.cellSize + (QubeGrid.WIDTH - 1) * grid.spacing;
             float gh = QubeGrid.HEIGHT * grid.cellSize + (QubeGrid.HEIGHT - 1) * grid.spacing;
 
-            // 컨테이너 위치 = 블록 position(0,0) 셀의 그리드 좌상 기준 위치
-            float xPos = -gw / 2f + position.x * cellStep;
-            float yPos = -gh / 2f + position.y * cellStep;
+            // 컨테이너 위치 = 블록 position(0,0) 셀의 그리드 좌상 기준 위치 (오프셋 포함)
+            float xPos = -gw / 2f + position.x * cellStep + gridOffset.x;
+            float yPos = -gh / 2f + position.y * cellStep + gridOffset.y;
 
             RectTransform rect = ghostObj.GetComponent<RectTransform>();
             rect.anchoredPosition = new Vector2(xPos, yPos);
@@ -468,6 +482,10 @@ public class QubeBlock : MonoBehaviour
                 cellImage.color = placedColor;
             }
 
+            // 기존 베벨 제거 후 배치 크기에 맞게 재생성
+            RemoveBevelChildren(cellObj);
+            QubeBevel.AddBevel(cellObj, grid.cellSize, BEVEL_THICKNESS);
+
             cellObj.name = $"PlacedCell_{globalPos.x}_{globalPos.y}";
             cellObj.transform.SetParent(placedContainer, worldPositionStays: true);
         }
@@ -508,9 +526,9 @@ public class QubeBlock : MonoBehaviour
         rect.anchorMax = new Vector2(ANCHOR_CENTER, ANCHOR_CENTER);
         rect.pivot = new Vector2(ANCHOR_CENTER, ANCHOR_CENTER);
 
-        // 두 셀의 중간 위치 계산
-        Vector2 posA = CalculateCellPosition(from, cellStep);
-        Vector2 posB = CalculateCellPosition(to, cellStep);
+        // 두 셀의 중간 위치 계산 (PlacedBlocks 컨테이너 기준 로컬 좌표)
+        Vector2 posA = CalculateCellLocalPosition(from, cellStep);
+        Vector2 posB = CalculateCellLocalPosition(to, cellStep);
         rect.anchoredPosition = (posA + posB) / 2f;
 
         if (horizontal)
@@ -520,6 +538,18 @@ public class QubeBlock : MonoBehaviour
         else
         {
             rect.sizeDelta = new Vector2(grid.cellSize, grid.spacing);
+        }
+    }
+
+    private void RemoveBevelChildren(GameObject cellObj)
+    {
+        for (int i = cellObj.transform.childCount - 1; i >= 0; i--)
+        {
+            Transform child = cellObj.transform.GetChild(i);
+            if (child.name.StartsWith("Highlight_") || child.name.StartsWith("Shadow_"))
+            {
+                Destroy(child.gameObject);
+            }
         }
     }
 

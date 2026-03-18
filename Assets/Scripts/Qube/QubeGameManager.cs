@@ -46,6 +46,9 @@ public class QubeGameManager : MonoBehaviour
     public TextMeshProUGUI turnCounterText;
     public TextMeshProUGUI gameOverText;
 
+    [Header("Visual FX")]
+    public bool applyColorPalette = true;
+
     private QubeBlock currentBlock;
     private int score = 0;
     private bool isGameOver = false;
@@ -79,6 +82,15 @@ public class QubeGameManager : MonoBehaviour
         {
             previewUI.OnSlotDragStarted += OnPreviewSlotDragStarted;
         }
+
+        // Phase 1 FX: 색상 팔레트 적용
+        if (applyColorPalette && blockShapes != null && blockShapes.Length > 0)
+        {
+            QubeBlockShape.ApplyPalette(blockShapes);
+        }
+
+        // Phase 1 FX: 배경 그라데이션 + 비네트
+        InitBackground();
 
         NewGame();
     }
@@ -328,13 +340,14 @@ public class QubeGameManager : MonoBehaviour
 
         if (scoreFeedback != null && removedQuads != null && removedQuads.Count > 0)
         {
+            Vector2 gridOffset = grid.GetComponent<RectTransform>().anchoredPosition;
             float cellStep = grid.cellSize + grid.spacing;
             Vector2 center = removedQuads[0].GetRectCenterFloat();
             float gw = QubeGrid.WIDTH * grid.cellSize + (QubeGrid.WIDTH - 1) * grid.spacing;
             float gh = QubeGrid.HEIGHT * grid.cellSize + (QubeGrid.HEIGHT - 1) * grid.spacing;
             Vector2 popupPos = new Vector2(
-                -gw / 2f + center.x * cellStep + grid.cellSize / 2f,
-                -gh / 2f + center.y * cellStep + grid.cellSize / 2f
+                -gw / 2f + center.x * cellStep + grid.cellSize / 2f + gridOffset.x,
+                -gh / 2f + center.y * cellStep + grid.cellSize / 2f + gridOffset.y
             );
             scoreFeedback.ShowScorePopup(pulseScore, popupPos);
 
@@ -406,6 +419,20 @@ public class QubeGameManager : MonoBehaviour
         ghostEnabled = enabled;
         if (currentBlock != null)
             currentBlock.SetGhostEnabled(ghostEnabled);
+    }
+
+    private void InitBackground()
+    {
+        // Canvas를 찾아 배경 적용
+        Canvas canvas = GetComponentInParent<Canvas>();
+        if (canvas == null) canvas = FindObjectOfType<Canvas>();
+        if (canvas == null) return;
+
+        QubeBackground bg = canvas.gameObject.GetComponent<QubeBackground>();
+        if (bg == null)
+            bg = canvas.gameObject.AddComponent<QubeBackground>();
+
+        bg.Apply(canvas.transform);
     }
 
     public void GameOver()
