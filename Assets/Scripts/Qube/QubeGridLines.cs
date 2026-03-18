@@ -1,5 +1,6 @@
 using UnityEngine;
 using UnityEngine.UI;
+using System.Collections;
 using System.Collections.Generic;
 
 /// <summary>
@@ -15,7 +16,19 @@ public class QubeGridLines : MonoBehaviour
     public float lineThickness = 2f;
     public Color lineColor = new Color(0.3f, 0.35f, 0.38f, 1f);
 
+    // 글로우 & 도트 설정
+    private const float GLOW_THICKNESS_MULTIPLIER = 3f;
+    private const float GLOW_ALPHA = 0.12f;
+    private const float DOT_SIZE = 5f;
+    private const float DOT_ALPHA = 0.4f;
+
+    // 아웃라인 펄스 설정
+    private const float PULSE_MIN_ALPHA = 0.6f;
+    private const float PULSE_MAX_ALPHA = 1.0f;
+    private const float PULSE_SPEED = 2.5f;
+
     private List<GameObject> lineObjects = new List<GameObject>();
+    private Coroutine pulseCoroutine;
 
     public void BuildLines()
     {
@@ -30,34 +43,71 @@ public class QubeGridLines : MonoBehaviour
         float right = left + totalWidth;
         float top = bottom + totalHeight;
 
-        // 외곽 테두리
-        CreateRect("Border_Bottom", left, bottom - lineThickness / 2f, totalWidth, lineThickness);
-        CreateRect("Border_Top", left, top - lineThickness / 2f, totalWidth, lineThickness);
-        CreateRect("Border_Left", left - lineThickness / 2f, bottom, lineThickness, totalHeight);
-        CreateRect("Border_Right", right - lineThickness / 2f, bottom, lineThickness, totalHeight);
+        float glowThickness = lineThickness * GLOW_THICKNESS_MULTIPLIER;
+        Color glowColor = new Color(lineColor.r, lineColor.g, lineColor.b, GLOW_ALPHA);
 
-        // 세로 내부 라인
+        // 외곽 테두리 (글로우 + 3배 두께 라인)
+        float borderThickness = lineThickness * 3f;
+        float borderGlowThickness = borderThickness * GLOW_THICKNESS_MULTIPLIER;
+        Color borderGlowColor = new Color(lineColor.r, lineColor.g, lineColor.b, GLOW_ALPHA * 2f);
+
+        // 상/하는 원래 폭, 좌/우만 borderThickness/2만큼 상하 연장하여 모서리 채움
+        float bHalf = borderThickness / 2f;
+        float bgHalf = borderGlowThickness / 2f;
+
+        CreateRect("BorderGlow_Bottom", left, bottom - bgHalf, totalWidth, borderGlowThickness, borderGlowColor);
+        CreateRect("BorderGlow_Top", left, top - bgHalf, totalWidth, borderGlowThickness, borderGlowColor);
+        CreateRect("BorderGlow_Left", left - bgHalf, bottom - bgHalf, borderGlowThickness, totalHeight + borderGlowThickness, borderGlowColor);
+        CreateRect("BorderGlow_Right", right - bgHalf, bottom - bgHalf, borderGlowThickness, totalHeight + borderGlowThickness, borderGlowColor);
+
+        CreateRect("Border_Bottom", left, bottom - bHalf, totalWidth, borderThickness);
+        CreateRect("Border_Top", left, top - bHalf, totalWidth, borderThickness);
+        CreateRect("Border_Left", left - bHalf, bottom - bHalf, borderThickness, totalHeight + borderThickness);
+        CreateRect("Border_Right", right - bHalf, bottom - bHalf, borderThickness, totalHeight + borderThickness);
+
+        // 세로 내부 라인 (글로우 + 라인)
         for (int x = 1; x < gridWidth; x++)
         {
             float xPos = left + x * cellStep - spacing / 2f - lineThickness / 2f;
+            float xGlow = left + x * cellStep - spacing / 2f - glowThickness / 2f;
+            CreateRect($"VGlow_{x}", xGlow, bottom, glowThickness, totalHeight, glowColor);
             CreateRect($"VLine_{x}", xPos, bottom, lineThickness, totalHeight);
         }
 
-        // 가로 내부 라인
+        // 가로 내부 라인 (글로우 + 라인)
         for (int y = 1; y < gridHeight; y++)
         {
             float yPos = bottom + y * cellStep - spacing / 2f - lineThickness / 2f;
+            float yGlow = bottom + y * cellStep - spacing / 2f - glowThickness / 2f;
+            CreateRect($"HGlow_{y}", left, yGlow, totalWidth, glowThickness, glowColor);
             CreateRect($"HLine_{y}", left, yPos, totalWidth, lineThickness);
+        }
+
+        // 교차점 도트
+        Color dotColor = new Color(lineColor.r + 0.15f, lineColor.g + 0.15f, lineColor.b + 0.15f, DOT_ALPHA);
+        for (int x = 1; x < gridWidth; x++)
+        {
+            for (int y = 1; y < gridHeight; y++)
+            {
+                float dotX = left + x * cellStep - spacing / 2f - DOT_SIZE / 2f;
+                float dotY = bottom + y * cellStep - spacing / 2f - DOT_SIZE / 2f;
+                CreateRect($"Dot_{x}_{y}", dotX, dotY, DOT_SIZE, DOT_SIZE, dotColor);
+            }
         }
     }
 
     private void CreateRect(string name, float x, float y, float width, float height)
     {
+        CreateRect(name, x, y, width, height, lineColor);
+    }
+
+    private void CreateRect(string name, float x, float y, float width, float height, Color color)
+    {
         GameObject obj = new GameObject(name);
         obj.transform.SetParent(transform, false);
 
         Image img = obj.AddComponent<Image>();
-        img.color = lineColor;
+        img.color = color;
         img.raycastTarget = false;
 
         RectTransform rect = obj.GetComponent<RectTransform>();
@@ -127,6 +177,7 @@ public class QubeGridLines : MonoBehaviour
         float gridLeft = -totalWidth / 2f;
         float gridBottom = -totalHeight / 2f;
         float outlineThickness = 9f;
+        float glowOutlineThickness = outlineThickness * 2.5f;
 
         // Quad 영역의 픽셀 좌표 (spacing 포함)
         float qLeft = gridLeft + minX * cellStep;
@@ -136,7 +187,18 @@ public class QubeGridLines : MonoBehaviour
         float qWidth = qRight - qLeft;
         float qHeight = qTop - qBottom;
 
-        // 4변 연속 라인
+        // 글로우 레이어 (아웃라인 뒤, 더 두꺼운 반투명)
+        Color glowColor = new Color(outlineColor.r, outlineColor.g, outlineColor.b, 0.2f);
+        outlineObjects.Add(CreateOutlineRect("QuadGlow_B",
+            qLeft, qBottom - glowOutlineThickness / 2f, qWidth, glowOutlineThickness, glowColor));
+        outlineObjects.Add(CreateOutlineRect("QuadGlow_T",
+            qLeft, qTop - glowOutlineThickness / 2f, qWidth, glowOutlineThickness, glowColor));
+        outlineObjects.Add(CreateOutlineRect("QuadGlow_L",
+            qLeft - glowOutlineThickness / 2f, qBottom - glowOutlineThickness / 2f, glowOutlineThickness, qHeight + glowOutlineThickness, glowColor));
+        outlineObjects.Add(CreateOutlineRect("QuadGlow_R",
+            qRight - glowOutlineThickness / 2f, qBottom - glowOutlineThickness / 2f, glowOutlineThickness, qHeight + glowOutlineThickness, glowColor));
+
+        // 메인 아웃라인
         outlineObjects.Add(CreateOutlineRect("QuadOutline_B",
             qLeft, qBottom - outlineThickness / 2f, qWidth, outlineThickness, outlineColor));
         outlineObjects.Add(CreateOutlineRect("QuadOutline_T",
@@ -168,11 +230,72 @@ public class QubeGridLines : MonoBehaviour
 
     public void ClearAllOutlines()
     {
+        StopPulse();
         foreach (var obj in outlineObjects)
         {
             if (obj != null) Destroy(obj);
         }
         outlineObjects.Clear();
+    }
+
+    /// <summary>
+    /// 아웃라인 펄스(호흡) 애니메이션 시작
+    /// </summary>
+    public void StartPulse()
+    {
+        StopPulse();
+        if (outlineObjects.Count > 0)
+        {
+            pulseCoroutine = StartCoroutine(PulseAnimation());
+        }
+    }
+
+    public void StopPulse()
+    {
+        if (pulseCoroutine != null)
+        {
+            StopCoroutine(pulseCoroutine);
+            pulseCoroutine = null;
+        }
+    }
+
+    private IEnumerator PulseAnimation()
+    {
+        while (true)
+        {
+            float t = (Mathf.Sin(Time.time * PULSE_SPEED) + 1f) / 2f;
+            float alpha = Mathf.Lerp(PULSE_MIN_ALPHA, PULSE_MAX_ALPHA, t);
+
+            foreach (var obj in outlineObjects)
+            {
+                if (obj == null) continue;
+                Image img = obj.GetComponent<Image>();
+                if (img == null) continue;
+
+                Color c = img.color;
+                // 글로우는 비율 유지, 메인 아웃라인은 직접 적용
+                if (obj.name.StartsWith("QuadGlow_"))
+                    img.color = new Color(c.r, c.g, c.b, 0.2f * alpha);
+                else if (obj.name.StartsWith("QuadOutline_"))
+                    img.color = new Color(c.r, c.g, c.b, alpha);
+            }
+
+            yield return null;
+        }
+    }
+
+    /// <summary>
+    /// 쿼드 크기에 따른 아웃라인 색상 반환
+    /// </summary>
+    public static Color GetOutlineColorBySize(int quadSize)
+    {
+        if (quadSize >= 16)
+            return new Color(1.00f, 0.18f, 0.47f); // 마젠타 (거대)
+        if (quadSize >= 9)
+            return new Color(1.00f, 0.72f, 0.00f); // 앰버 (대형)
+        if (quadSize >= 6)
+            return new Color(0.18f, 0.85f, 0.64f); // 틸 (중형)
+        return Color.yellow; // 기본 (소형)
     }
 
     public void Refresh()

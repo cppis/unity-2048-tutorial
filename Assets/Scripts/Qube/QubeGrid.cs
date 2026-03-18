@@ -22,6 +22,7 @@ public class QubeGrid : MonoBehaviour
     private GameObject placedBlocksContainer;
     private GameObject gridLinesObject;
     private QubeGridLines gridLines;
+    private Image[,] cellBackgrounds;
 
     public void SetSize(int width, int height)
     {
@@ -34,6 +35,7 @@ public class QubeGrid : MonoBehaviour
         cells = new QubeCell[WIDTH, HEIGHT];
         SetupRectTransform();
         SetupGridLines();
+        CreateCellBackgrounds();
         CreatePlacedBlocksContainer();
         CreateGrid();
     }
@@ -110,6 +112,82 @@ public class QubeGrid : MonoBehaviour
         rect.localScale = Vector3.one;
     }
 
+    private void CreateCellBackgrounds()
+    {
+        // GridLines 바로 위, PlacedBlocks 아래에 셀 배경 레이어 생성
+        GameObject bgContainer = new GameObject("CellBackgrounds");
+        bgContainer.transform.SetParent(transform, false);
+
+        RectTransform bgRect = bgContainer.AddComponent<RectTransform>();
+        bgRect.anchorMin = Vector2.zero;
+        bgRect.anchorMax = Vector2.one;
+        bgRect.offsetMin = Vector2.zero;
+        bgRect.offsetMax = Vector2.zero;
+
+        // GridLines 바로 위에 배치
+        bgContainer.transform.SetSiblingIndex(1);
+
+        cellBackgrounds = new Image[WIDTH, HEIGHT];
+        float cellStep = cellSize + spacing;
+        float totalWidth = WIDTH * cellSize + (WIDTH - 1) * spacing;
+        float totalHeight = HEIGHT * cellSize + (HEIGHT - 1) * spacing;
+        float leftX = -totalWidth / 2f;
+        float bottomY = -totalHeight / 2f;
+
+        for (int y = 0; y < HEIGHT; y++)
+        {
+            for (int x = 0; x < WIDTH; x++)
+            {
+                GameObject cellBg = new GameObject($"CellBg_{x}_{y}");
+                cellBg.transform.SetParent(bgContainer.transform, false);
+
+                Image img = cellBg.AddComponent<Image>();
+                img.color = new Color(0, 0, 0, 0); // 기본 투명
+                img.raycastTarget = false;
+
+                RectTransform rect = cellBg.GetComponent<RectTransform>();
+                rect.anchorMin = new Vector2(ANCHOR_CENTER, ANCHOR_CENTER);
+                rect.anchorMax = new Vector2(ANCHOR_CENTER, ANCHOR_CENTER);
+                rect.pivot = new Vector2(ANCHOR_CENTER, ANCHOR_CENTER);
+                rect.sizeDelta = new Vector2(cellSize, cellSize);
+
+                float xPos = leftX + x * cellStep + cellSize / 2f;
+                float yPos = bottomY + y * cellStep + cellSize / 2f;
+                rect.anchoredPosition = new Vector2(xPos, yPos);
+
+                cellBackgrounds[x, y] = img;
+            }
+        }
+    }
+
+    /// <summary>
+    /// QubeCell.cellColor를 셀 배경 비주얼에 반영합니다.
+    /// </summary>
+    public void UpdateCellVisuals()
+    {
+        if (cellBackgrounds == null) return;
+
+        for (int x = 0; x < WIDTH; x++)
+        {
+            for (int y = 0; y < HEIGHT; y++)
+            {
+                QubeCell cell = cells[x, y];
+                if (cell == null) continue;
+
+                if (cell.clearTimer > 0)
+                {
+                    // 소거 중: cellColor 표시
+                    cellBackgrounds[x, y].color = cell.cellColor;
+                }
+                else
+                {
+                    // 기본: 투명 (그리드 배경이 보임)
+                    cellBackgrounds[x, y].color = new Color(0, 0, 0, 0);
+                }
+            }
+        }
+    }
+
     private void CreateGrid()
     {
         for (int y = 0; y < HEIGHT; y++)
@@ -154,6 +232,31 @@ public class QubeGrid : MonoBehaviour
     {
         QubeCell cell = GetCell(coords);
         return cell != null && cell.isOccupied;
+    }
+
+    public bool IsGridEmpty()
+    {
+        for (int x = 0; x < WIDTH; x++)
+        {
+            for (int y = 0; y < HEIGHT; y++)
+            {
+                if (cells[x, y] != null && cells[x, y].isOccupied)
+                    return false;
+            }
+        }
+        return true;
+    }
+
+    public bool HasAdjacentOccupied(Vector2Int coords)
+    {
+        Vector2Int[] dirs = { Vector2Int.up, Vector2Int.down, Vector2Int.left, Vector2Int.right };
+        foreach (var dir in dirs)
+        {
+            Vector2Int neighbor = coords + dir;
+            if (IsValidPosition(neighbor) && IsCellOccupied(neighbor))
+                return true;
+        }
+        return false;
     }
 
     public void SetCellOccupied(Vector2Int coords, bool occupied, Color color, bool wasCleared = false, int blockId = -1)
@@ -203,6 +306,7 @@ public class QubeGrid : MonoBehaviour
         cells = new QubeCell[WIDTH, HEIGHT];
         SetupRectTransform();
         SetupGridLines();
+        CreateCellBackgrounds();
         CreateGrid();
     }
 

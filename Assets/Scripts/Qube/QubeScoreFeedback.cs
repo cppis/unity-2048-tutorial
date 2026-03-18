@@ -98,6 +98,16 @@ public class QubeScoreFeedback : MonoBehaviour
             elapsed += Time.deltaTime;
             float t = elapsed / POPUP_DURATION;
 
+            // 스케일 펀치: 0→0.2 구간에서 0.5→1.2, 0.2→0.4 구간에서 1.2→1.0
+            float scale;
+            if (t < 0.2f)
+                scale = Mathf.Lerp(0.5f, 1.2f, t / 0.2f);
+            else if (t < 0.4f)
+                scale = Mathf.Lerp(1.2f, 1.0f, (t - 0.2f) / 0.2f);
+            else
+                scale = 1.0f;
+            rect.localScale = Vector3.one * scale;
+
             rect.anchoredPosition = startPos + Vector2.up * (POPUP_RISE * t);
             tmp.color = new Color(startColor.r, startColor.g, startColor.b, 1f - t);
 

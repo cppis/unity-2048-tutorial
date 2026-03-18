@@ -8,8 +8,8 @@ public class QubeCell
 {
     private const int CLEAR_TIMER_DURATION = 3;
 
-    private static readonly Color EMPTY_COLOR = new Color(0.176f, 0.204f, 0.212f, 1f);
-    private static readonly Color CLEARED_COLOR = new Color(0.08f, 0.1f, 0.11f, 1f);
+    private static readonly Color EMPTY_COLOR = new Color(0f, 0f, 0f, 0f); // 투명 (배경 그라데이션이 보임)
+    private static readonly Color CLEARED_COLOR = new Color(0f, 0f, 0f, 0.5f); // 반투명 검정 (배경 위에 어두운 오버레이)
 
     public Vector2Int coordinates;
     public bool isOccupied;

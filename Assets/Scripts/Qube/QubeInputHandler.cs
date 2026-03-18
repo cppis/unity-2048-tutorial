@@ -45,7 +45,18 @@ public class QubeInputHandler : MonoBehaviour
         dragStartFrame = Time.frameCount;
     }
 
-    public enum InputAction { None, Place, CancelDrag, ClickedQuad }
+    // 스와이프 회전 감지용
+    private const float SWIPE_MIN_DISTANCE = 80f;
+    private const float SWIPE_DIRECTION_RATIO = 1.5f; // 수평 > 수직 × 1.5
+    private const float SWIPE_SCREEN_LOWER_RATIO = 0.4f; // 화면 하단 40%
+
+    private bool isSwipeTracking = false;
+    private Vector2 swipeStartPos;
+    private bool swipeConsumed = false; // 한 터치에서 스와이프 1회만
+
+    public int lastSwipeDirection { get; private set; } // 1=우(시계), -1=좌(반시계)
+
+    public enum InputAction { None, Place, CancelDrag, ClickedQuad, RotatePreview }
 
     // Phase 1에서 클릭된 그리드 좌표 (ClickedQuad 시 유효)
     public Vector2Int lastClickedCell { get; private set; }
@@ -70,17 +81,91 @@ public class QubeInputHandler : MonoBehaviour
             isTouchUp = true;
         }
 
-        if (isTouchUp)
+        // 하단 영역 스와이프 회전 감지
+        bool isTouchDown = false;
+        bool isTouchHeld = false;
+
+        if (Input.touchCount > 0)
         {
-            Vector2Int gridPos;
-            if (ScreenToGridPosition(screenPos, out gridPos))
+            Touch touch = Input.GetTouch(0);
+            screenPos = touch.position;
+            isTouchDown = (touch.phase == TouchPhase.Began);
+            isTouchHeld = (touch.phase == TouchPhase.Moved || touch.phase == TouchPhase.Stationary);
+            isTouchUp = (touch.phase == TouchPhase.Ended || touch.phase == TouchPhase.Canceled);
+        }
+        else
+        {
+            if (Input.GetMouseButtonDown(0))
             {
-                lastClickedCell = gridPos;
-                return InputAction.ClickedQuad;
+                screenPos = Input.mousePosition;
+                isTouchDown = true;
+            }
+            else if (Input.GetMouseButton(0))
+            {
+                screenPos = Input.mousePosition;
+                isTouchHeld = true;
+            }
+            else if (Input.GetMouseButtonUp(0))
+            {
+                screenPos = Input.mousePosition;
+                isTouchUp = true;
             }
         }
 
+        // 하단 영역에서 터치 시작 → 스와이프 추적 시작
+        if (isTouchDown && IsInLowerScreen(screenPos))
+        {
+            // 프리뷰 슬롯 위가 아닌 경우에만 스와이프 추적
+            Vector2Int gridPos;
+            if (!ScreenToGridPosition(screenPos, out gridPos))
+            {
+                isSwipeTracking = true;
+                swipeStartPos = screenPos;
+                swipeConsumed = false;
+            }
+        }
+
+        // 스와이프 판정 (50px마다 연속 회전)
+        if (isSwipeTracking && (isTouchHeld || isTouchUp))
+        {
+            Vector2 delta = screenPos - swipeStartPos;
+            float absX = Mathf.Abs(delta.x);
+            float absY = Mathf.Abs(delta.y);
+
+            if (absX >= SWIPE_MIN_DISTANCE && absX > absY * SWIPE_DIRECTION_RATIO)
+            {
+                lastSwipeDirection = delta.x > 0 ? 1 : -1;
+                swipeConsumed = true;
+                swipeStartPos = screenPos; // 기준점 리셋 → 다음 50px에서 다시 회전
+                return InputAction.RotatePreview;
+            }
+        }
+
+        // 터치 종료 → 추적 리셋
+        if (isTouchUp)
+        {
+            if (isSwipeTracking && !swipeConsumed)
+            {
+                // 스와이프 없이 릴리즈 → Quad 클릭 판정
+                isSwipeTracking = false;
+            }
+
+            Vector2Int gridPos2;
+            if (ScreenToGridPosition(screenPos, out gridPos2))
+            {
+                lastClickedCell = gridPos2;
+                return InputAction.ClickedQuad;
+            }
+
+            isSwipeTracking = false;
+        }
+
         return InputAction.None;
+    }
+
+    private bool IsInLowerScreen(Vector2 screenPos)
+    {
+        return screenPos.y < Screen.height * SWIPE_SCREEN_LOWER_RATIO;
     }
 
     /// <summary>

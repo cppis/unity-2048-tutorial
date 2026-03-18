@@ -666,7 +666,7 @@ RectTransform:
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
   m_AnchorMin: {x: 0.5, y: 0.5}
   m_AnchorMax: {x: 0.5, y: 0.5}
-  m_AnchoredPosition: {x: 0, y: 0}
+  m_AnchoredPosition: {x: 0, y: -140}
   m_SizeDelta: {x: 760, y: 570}
   m_Pivot: {x: 0.5, y: 0.5}
 --- !u!114 &943529545
@@ -708,9 +708,10 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 5f0add2723b378a49a305469ea391bcc, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::QubeGrid
-  cellPrefab: {fileID: 7189412026168442766, guid: f5de9bb9fc23d66468632d0ec58cae0e, type: 3}
   cellSize: 80
   spacing: 5
+  lineThickness: 2
+  lineColor: {r: 0.3, g: 0.35, b: 0.38, a: 1}
 --- !u!1 &952160598
 GameObject:
   m_ObjectHideFlags: 0
@@ -774,9 +775,12 @@ MonoBehaviour:
   previewUI: {fileID: 474790497}
   inputHandler: {fileID: 0}
   scoreFeedback: {fileID: 0}
+  ghostEnabled: 1
   scoreText: {fileID: 1767917374}
   turnCounterText: {fileID: 374273168}
   gameOverText: {fileID: 0}
+  applyColorPalette: 1
+  adBanner: {fileID: 0}
 --- !u!1 &982539417
 GameObject:
   m_ObjectHideFlags: 0

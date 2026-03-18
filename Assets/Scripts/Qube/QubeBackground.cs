@@ -1,5 +1,6 @@
 using UnityEngine;
 using UnityEngine.UI;
+using System.Collections.Generic;
 
 /// <summary>
 /// 프로시저럴 그라데이션 배경 + 비네트 오버레이를 생성합니다.
@@ -8,6 +9,12 @@ public class QubeBackground : MonoBehaviour
 {
     private const int GRADIENT_TEX_HEIGHT = 256;
     private const int VIGNETTE_TEX_SIZE = 256;
+    private const int AMBIENT_PARTICLE_COUNT = 10;
+    private const float AMBIENT_PARTICLE_MIN_SIZE = 3f;
+    private const float AMBIENT_PARTICLE_MAX_SIZE = 8f;
+    private const float AMBIENT_PARTICLE_MIN_SPEED = 8f;
+    private const float AMBIENT_PARTICLE_MAX_SPEED = 25f;
+    private const float AMBIENT_PARTICLE_ALPHA = 0.15f;
 
     [Header("Gradient")]
     public Color topColor = new Color(0.08f, 0.16f, 0.26f, 1f);
@@ -19,11 +26,19 @@ public class QubeBackground : MonoBehaviour
 
     private Image backgroundImage;
     private GameObject vignetteObject;
+    private List<AmbientParticle> ambientParticles = new List<AmbientParticle>();
+    private RectTransform ambientContainer;
 
     public void Apply(Transform canvasTransform)
     {
         ApplyGradient(canvasTransform);
         CreateVignette(canvasTransform);
+        CreateAmbientParticles(canvasTransform);
+    }
+
+    private void Update()
+    {
+        UpdateAmbientParticles();
     }
 
     private void ApplyGradient(Transform canvasTransform)
@@ -136,5 +151,96 @@ public class QubeBackground : MonoBehaviour
 
         tex.Apply();
         return tex;
+    }
+
+    // ==================== 앰비언트 파티클 ====================
+
+    private void CreateAmbientParticles(Transform canvasTransform)
+    {
+        GameObject containerObj = new GameObject("AmbientParticles");
+        containerObj.transform.SetParent(canvasTransform, false);
+        // Background와 Vignette 바로 위, 게임 요소 아래
+        containerObj.transform.SetSiblingIndex(2);
+
+        ambientContainer = containerObj.AddComponent<RectTransform>();
+        ambientContainer.anchorMin = Vector2.zero;
+        ambientContainer.anchorMax = Vector2.one;
+        ambientContainer.offsetMin = Vector2.zero;
+        ambientContainer.offsetMax = Vector2.zero;
+
+        for (int i = 0; i < AMBIENT_PARTICLE_COUNT; i++)
+        {
+            AmbientParticle p = CreateOneAmbientParticle(randomizeY: true);
+            ambientParticles.Add(p);
+        }
+    }
+
+    private AmbientParticle CreateOneAmbientParticle(bool randomizeY)
+    {
+        GameObject obj = new GameObject("AmbientDot");
+        obj.transform.SetParent(ambientContainer, false);
+
+        Image img = obj.AddComponent<Image>();
+        float alpha = AMBIENT_PARTICLE_ALPHA * Random.Range(0.5f, 1.0f);
+        img.color = new Color(0.6f, 0.8f, 1f, alpha);
+        img.raycastTarget = false;
+
+        float size = Random.Range(AMBIENT_PARTICLE_MIN_SIZE, AMBIENT_PARTICLE_MAX_SIZE);
+        RectTransform rect = obj.GetComponent<RectTransform>();
+        rect.anchorMin = new Vector2(0.5f, 0.5f);
+        rect.anchorMax = new Vector2(0.5f, 0.5f);
+        rect.pivot = new Vector2(0.5f, 0.5f);
+        rect.sizeDelta = new Vector2(size, size);
+
+        // 화면 범위 내 랜덤 위치
+        float xRange = 540f; // 캔버스 반폭 기준
+        float yRange = 960f;
+        float startX = Random.Range(-xRange, xRange);
+        float startY = randomizeY ? Random.Range(-yRange, yRange) : -yRange;
+        rect.anchoredPosition = new Vector2(startX, startY);
+
+        return new AmbientParticle
+        {
+            rect = rect,
+            img = img,
+            speed = Random.Range(AMBIENT_PARTICLE_MIN_SPEED, AMBIENT_PARTICLE_MAX_SPEED),
+            drift = Random.Range(-5f, 5f),
+            yRange = yRange,
+            xRange = xRange
+        };
+    }
+
+    private void UpdateAmbientParticles()
+    {
+        for (int i = 0; i < ambientParticles.Count; i++)
+        {
+            var p = ambientParticles[i];
+            if (p.rect == null) continue;
+
+            Vector2 pos = p.rect.anchoredPosition;
+            pos.y += p.speed * Time.deltaTime;
+            pos.x += p.drift * Time.deltaTime;
+
+            // 화면 위로 벗어나면 아래에서 재생성
+            if (pos.y > p.yRange)
+            {
+                pos.y = -p.yRange;
+                pos.x = Random.Range(-p.xRange, p.xRange);
+                p.speed = Random.Range(AMBIENT_PARTICLE_MIN_SPEED, AMBIENT_PARTICLE_MAX_SPEED);
+                p.drift = Random.Range(-5f, 5f);
+            }
+
+            p.rect.anchoredPosition = pos;
+        }
+    }
+
+    private class AmbientParticle
+    {
+        public RectTransform rect;
+        public Image img;
+        public float speed;
+        public float drift;
+        public float yRange;
+        public float xRange;
     }
 }

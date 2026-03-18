@@ -1,6 +1,7 @@
 using UnityEngine;
 using UnityEngine.UI;
 using UnityEngine.EventSystems;
+using System.Collections;
 using System.Collections.Generic;
 
 public class QubeBlockPreviewUI : MonoBehaviour
@@ -12,9 +13,17 @@ public class QubeBlockPreviewUI : MonoBehaviour
     private const float FIRST_SLOT_SCALE = 1.3f;
     private const float MINI_BEVEL_THICKNESS = 1.5f;
 
+    // 회전 애니메이션 상수
+    private const float ROTATE_DURATION = 0.2f;
+    private const float ROTATE_OVERSHOOT = 1.3f; // EaseOutBack 오버슈트
+
     public System.Action<int> OnSlotDragStarted;
 
+    // 회전 틱 사운드
+
     private List<RectTransform> slotContainers = new List<RectTransform>();
+    private Coroutine rotateCoroutine;
+    private QubeAudio qubeAudio;
 
     private void Awake()
     {
@@ -52,7 +61,9 @@ public class QubeBlockPreviewUI : MonoBehaviour
             Image bg = slotObj.AddComponent<Image>();
             bg.sprite = CreateRoundedRectSprite(64, 64, 8);
             bg.type = Image.Type.Sliced;
-            bg.color = new Color(0.10f, 0.13f, 0.16f, 0.85f);
+            bg.color = i == 0
+                ? new Color(0.18f, 0.22f, 0.28f, 0.90f)   // 다음 블록: 밝은 배경
+                : new Color(0.10f, 0.13f, 0.16f, 0.85f);   // 나머지: 기본 어두운 색
             bg.raycastTarget = true;
 
             // 첫 번째 슬롯에 글로우 보더 추가
@@ -85,6 +96,97 @@ public class QubeBlockPreviewUI : MonoBehaviour
         {
             ClearSlot(slotContainers[i]);
         }
+    }
+
+    /// <summary>
+    /// 첫 번째 슬롯에 회전 애니메이션을 적용한 후 프리뷰를 갱신합니다.
+    /// direction: 1=시계(우), -1=반시계(좌)
+    /// </summary>
+    public void SetAudio(QubeAudio audio)
+    {
+        qubeAudio = audio;
+    }
+
+    public void AnimateRotateFirst(QubeBlockEntry[] entries, int direction)
+    {
+        if (rotateCoroutine != null)
+        {
+            // 이미 애니메이션 중 → 즉시 스냅 (애니메이션 생략)
+            StopCoroutine(rotateCoroutine);
+            rotateCoroutine = null;
+            CleanupRotateContainer();
+            UpdatePreview(entries);
+            if (qubeAudio != null) qubeAudio.PlayTick();
+            return;
+        }
+        rotateCoroutine = StartCoroutine(RotateFirstSlotCoroutine(entries, direction));
+    }
+
+    private void CleanupRotateContainer()
+    {
+        if (slotContainers.Count == 0) return;
+        RectTransform firstSlot = slotContainers[0];
+        for (int i = firstSlot.childCount - 1; i >= 0; i--)
+        {
+            Transform child = firstSlot.GetChild(i);
+            if (child.name == "RotateContainer")
+                DestroyImmediate(child.gameObject);
+        }
+    }
+
+    private IEnumerator RotateFirstSlotCoroutine(QubeBlockEntry[] entries, int direction)
+    {
+        if (slotContainers.Count == 0) yield break;
+
+        RectTransform firstSlot = slotContainers[0];
+
+        // 블록 셀들만 감싸는 컨테이너 생성
+        GameObject cellContainer = new GameObject("RotateContainer");
+        cellContainer.transform.SetParent(firstSlot, false);
+        RectTransform containerRect = cellContainer.AddComponent<RectTransform>();
+        containerRect.anchorMin = new Vector2(0.5f, 0.5f);
+        containerRect.anchorMax = new Vector2(0.5f, 0.5f);
+        containerRect.pivot = new Vector2(0.5f, 0.5f);
+        containerRect.anchoredPosition = Vector2.zero;
+        containerRect.sizeDelta = Vector2.zero;
+
+        // 기존 셀(MiniCell)들을 컨테이너로 이동 (GlowBorder 등 배경은 그대로)
+        List<Transform> cellsToMove = new List<Transform>();
+        for (int i = firstSlot.childCount - 1; i >= 0; i--)
+        {
+            Transform child = firstSlot.GetChild(i);
+            if (child.name == "MiniCell")
+                cellsToMove.Add(child);
+        }
+        foreach (var cell in cellsToMove)
+        {
+            cell.SetParent(containerRect, true);
+        }
+
+        // 컨테이너만 회전 애니메이션 + 틱 사운드 (시작 시 1회)
+        if (qubeAudio != null) qubeAudio.PlayTick();
+
+        float targetAngle = direction > 0 ? -90f : 90f;
+        float elapsed = 0f;
+
+        while (elapsed < ROTATE_DURATION)
+        {
+            elapsed += Time.deltaTime;
+            float t = elapsed / ROTATE_DURATION;
+
+            float c1 = ROTATE_OVERSHOOT;
+            float c3 = c1 + 1f;
+            float ease = 1f + c3 * Mathf.Pow(t - 1f, 3f) + c1 * Mathf.Pow(t - 1f, 2f);
+
+            float angle = Mathf.Lerp(0f, targetAngle, ease);
+            containerRect.localRotation = Quaternion.Euler(0f, 0f, angle);
+            yield return null;
+        }
+
+        // 애니메이션 완료 → 컨테이너 제거 + 실제 셀 데이터로 다시 그리기
+        Destroy(cellContainer);
+        UpdatePreview(entries);
+        rotateCoroutine = null;
     }
 
     private void ClearSlot(RectTransform slot)

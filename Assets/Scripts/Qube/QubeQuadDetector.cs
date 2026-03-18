@@ -229,11 +229,15 @@ public class QubeQuadDetector : MonoBehaviour
         // 모든 외곽선 해제
         gridLines.ClearAllOutlines();
 
-        // Quad 단위로 연속 아웃라인 표시
+        // Quad 단위로 크기별 색상 아웃라인 표시
         foreach (var quad in quads)
         {
-            gridLines.AddQuadOutline(quad.minX, quad.minY, quad.maxX, quad.maxY, Color.yellow);
+            Color outlineColor = QubeGridLines.GetOutlineColorBySize(quad.size);
+            gridLines.AddQuadOutline(quad.minX, quad.minY, quad.maxX, quad.maxY, outlineColor);
         }
+
+        // 펄스 애니메이션 시작
+        gridLines.StartPulse();
     }
 
 }

@@ -1,4 +1,5 @@
 using System.Collections;
+using System.Collections.Generic;
 using UnityEngine;
 using UnityEngine.UI;
 using TMPro;
@@ -49,10 +50,21 @@ public class QubeGameManager : MonoBehaviour
     [Header("Visual FX")]
     public bool applyColorPalette = true;
 
+    [Header("Ads")]
+    public QubeAdBanner adBanner;
+
     private QubeBlock currentBlock;
+    private QubeBlockEntry? currentDragEntry; // 드래그 중인 블록의 큐 엔트리 (취소 시 복원용)
     private int score = 0;
     private bool isGameOver = false;
     private GamePhase currentPhase = GamePhase.QubeControl;
+    private QubeUIParticles uiParticles;
+    private QubeAudio qubeAudio;
+    private int qubeControlEnterFrame = -1; // 입력 쿨다운용
+
+    // 배치 바운스 상수
+    private const float BOUNCE_DURATION = 0.15f;
+    private const float BOUNCE_SCALE = 1.15f;
 
     private void Awake()
     {
@@ -92,6 +104,15 @@ public class QubeGameManager : MonoBehaviour
         // Phase 1 FX: 배경 그라데이션 + 비네트
         InitBackground();
 
+        // 광고 초기화
+        InitAds();
+
+        // Phase 2 FX: UI 파티클 시스템 초기화
+        InitUIParticles();
+
+        // 오디오 초기화
+        InitAudio();
+
         NewGame();
     }
 
@@ -122,7 +143,7 @@ public class QubeGameManager : MonoBehaviour
         if (gameOverText != null)
             gameOverText.gameObject.SetActive(false);
 
-        int shapeCount = difficulty != null ? difficulty.blockShapeCount : Mathf.Min(5, blockShapes.Length);
+        int shapeCount = difficulty != null ? difficulty.blockShapeCount : blockShapes.Length;
         if (blockQueue != null)
             blockQueue.Initialize(blockShapes, Mathf.Min(shapeCount, blockShapes.Length));
 
@@ -135,6 +156,7 @@ public class QubeGameManager : MonoBehaviour
     private void EnterQubeControl()
     {
         currentPhase = GamePhase.QubeControl;
+        qubeControlEnterFrame = Time.frameCount;
 
         // 프리뷰 슬롯 터치 활성화
         if (previewUI != null)
@@ -159,13 +181,11 @@ public class QubeGameManager : MonoBehaviour
         if (previewUI != null)
             previewUI.SetSlotsInteractable(false);
 
-        // 큐에서 첫 번째 블록 꺼내 생성
+        // 큐에서 첫 번째 블록 꺼내 생성 (프리뷰 갱신은 배치 성공 후에)
         QubeBlockEntry entry = blockQueue != null
             ? blockQueue.Dequeue()
             : new QubeBlockEntry(blockShapes[0], (Vector2Int[])blockShapes[0].cells.Clone());
-
-        if (previewUI != null && blockQueue != null)
-            previewUI.UpdatePreview(blockQueue.GetPreview());
+        currentDragEntry = entry;
 
         // 클릭 위치를 그리드 좌표로 변환하여 초기 위치로 설정
         Vector2Int spawnPos = new Vector2Int(-100, -100);
@@ -190,6 +210,7 @@ public class QubeGameManager : MonoBehaviour
             currentBlock.SetSpawnPosition(spawnPos);
             currentBlock.Initialize(entry.shape, entry.rotatedCells, grid);
             currentBlock.SetGhostEnabled(ghostEnabled);
+            currentBlock.StartDragVisual();
 
             if (inputHandler != null)
                 inputHandler.StartDragFromPreview(currentBlock);
@@ -237,8 +258,21 @@ public class QubeGameManager : MonoBehaviour
     {
         if (inputHandler == null) return;
 
+        // 배치/취소 직후 입력 무시 (이전 터치 이벤트 소비 대기)
+        if (Time.frameCount - qubeControlEnterFrame <= 5) return;
+
         var action = inputHandler.UpdateQubeControl();
-        if (action == QubeInputHandler.InputAction.ClickedQuad)
+        if (action == QubeInputHandler.InputAction.RotatePreview)
+        {
+            // 하단 스와이프 → 첫 번째 블록 회전
+            if (blockQueue != null)
+            {
+                blockQueue.RotateFirst(inputHandler.lastSwipeDirection);
+                if (previewUI != null)
+                    previewUI.AnimateRotateFirst(blockQueue.GetPreview(), inputHandler.lastSwipeDirection);
+            }
+        }
+        else if (action == QubeInputHandler.InputAction.ClickedQuad)
         {
             // Quad 클릭 → 소거
             QubeQuad quad = pulseSystem.GetQuadAtCell(inputHandler.lastClickedCell);
@@ -261,9 +295,14 @@ public class QubeGameManager : MonoBehaviour
 
         var action = inputHandler.UpdateDragging();
 
-        if (action == QubeInputHandler.InputAction.Place || action == QubeInputHandler.InputAction.CancelDrag)
+        if (action == QubeInputHandler.InputAction.CancelDrag)
         {
-            // 현재 위치에서 배치 가능하면 즉시 배치
+            // 그리드 밖 릴리즈 → 즉시 취소
+            CancelCurrentBlock();
+        }
+        else if (action == QubeInputHandler.InputAction.Place)
+        {
+            // 그리드 위 릴리즈 → 배치 시도
             if (currentBlock.CanPlace())
             {
                 EnterPlacingBlock();
@@ -276,11 +315,11 @@ public class QubeGameManager : MonoBehaviour
             {
                 currentBlock.SetPosition(nearestPos);
                 EnterPlacingBlock();
+                return;
             }
-            else
-            {
-                CancelCurrentBlock();
-            }
+
+            // 배치 불가 → 취소
+            CancelCurrentBlock();
         }
     }
 
@@ -299,11 +338,24 @@ public class QubeGameManager : MonoBehaviour
 
     private IEnumerator PlaceBlockCoroutine()
     {
+        // 배치 전 위치 기록 (파티클/바운스용)
+        List<Vector2Int> placedPositions = currentBlock.GetPlacedPositions();
+        Color blockColor = currentBlock.shape.blockColor;
+
+        currentBlock.EndDragVisual();
         currentBlock.Place();
         currentBlock = null;
+        currentDragEntry = null;
         if (inputHandler != null) inputHandler.ClearBlock();
 
+        // 배치 성공 → 프리뷰 갱신
+        if (previewUI != null && blockQueue != null)
+            previewUI.UpdatePreview(blockQueue.GetPreview());
+
         yield return null; // grid 상태 갱신 대기
+
+        // 배치 파티클 + 바운스 애니메이션
+        EmitPlaceEffects(placedPositions, blockColor);
 
         EnterUpdatingQube();
     }
@@ -325,10 +377,22 @@ public class QubeGameManager : MonoBehaviour
     {
         if (currentBlock != null)
         {
+            currentBlock.EndDragVisual();
             Destroy(currentBlock.gameObject);
             currentBlock = null;
         }
         if (inputHandler != null) inputHandler.ClearBlock();
+
+        // 큐에 블록 복원
+        if (currentDragEntry.HasValue && blockQueue != null)
+        {
+            blockQueue.PushFront(currentDragEntry.Value);
+            currentDragEntry = null;
+        }
+
+        // 프리뷰 갱신 (복원된 상태)
+        if (previewUI != null && blockQueue != null)
+            previewUI.UpdatePreview(blockQueue.GetPreview());
 
         EnterQubeControl();
     }
@@ -350,6 +414,13 @@ public class QubeGameManager : MonoBehaviour
                 -gh / 2f + center.y * cellStep + grid.cellSize / 2f + gridOffset.y
             );
             scoreFeedback.ShowScorePopup(pulseScore, popupPos);
+
+            // 쿼드 파티클
+            if (uiParticles != null)
+            {
+                Color quadColor = QubeGridLines.GetOutlineColorBySize(removedQuads[0].size);
+                uiParticles.EmitQuadParticles(popupPos, quadColor);
+            }
 
             if (removedQuads.Count >= 2)
             {
@@ -419,6 +490,113 @@ public class QubeGameManager : MonoBehaviour
         ghostEnabled = enabled;
         if (currentBlock != null)
             currentBlock.SetGhostEnabled(ghostEnabled);
+    }
+
+    private bool IsBlockPositionOnGrid(Vector2Int blockPos)
+    {
+        // 블록 위치의 기준점이 그리드 범위 근처(±2셀)에 있는지 확인
+        return blockPos.x >= -2 && blockPos.x < QubeGrid.WIDTH + 2 &&
+               blockPos.y >= -2 && blockPos.y < QubeGrid.HEIGHT + 2;
+    }
+
+    private void InitUIParticles()
+    {
+        Canvas canvas = GetComponentInParent<Canvas>();
+        if (canvas == null) canvas = FindObjectOfType<Canvas>();
+        if (canvas == null) return;
+
+        uiParticles = canvas.gameObject.GetComponent<QubeUIParticles>();
+        if (uiParticles == null)
+            uiParticles = canvas.gameObject.AddComponent<QubeUIParticles>();
+
+        uiParticles.Initialize(canvas.transform);
+    }
+
+    private void EmitPlaceEffects(List<Vector2Int> placedPositions, Color blockColor)
+    {
+        if (placedPositions == null || placedPositions.Count == 0) return;
+
+        Vector2 gridOffset = grid.GetComponent<RectTransform>().anchoredPosition;
+        float cellStep = grid.cellSize + grid.spacing;
+        float gw = QubeGrid.WIDTH * grid.cellSize + (QubeGrid.WIDTH - 1) * grid.spacing;
+        float gh = QubeGrid.HEIGHT * grid.cellSize + (QubeGrid.HEIGHT - 1) * grid.spacing;
+
+        // 블록 중심 계산
+        Vector2 centerSum = Vector2.zero;
+        Transform placedContainer = grid.GetPlacedBlocksContainer();
+
+        foreach (var pos in placedPositions)
+        {
+            float xPos = -gw / 2f + pos.x * cellStep + grid.cellSize / 2f + gridOffset.x;
+            float yPos = -gh / 2f + pos.y * cellStep + grid.cellSize / 2f + gridOffset.y;
+            centerSum += new Vector2(xPos, yPos);
+
+            // 각 셀에 바운스 애니메이션
+            string cellName = $"PlacedCell_{pos.x}_{pos.y}";
+            Transform cellTransform = placedContainer.Find(cellName);
+            if (cellTransform != null)
+            {
+                StartCoroutine(BounceCell(cellTransform.GetComponent<RectTransform>()));
+            }
+        }
+
+        // 파티클 버스트
+        Vector2 particleCenter = centerSum / placedPositions.Count;
+        if (uiParticles != null)
+        {
+            uiParticles.EmitPlaceParticles(particleCenter, blockColor);
+        }
+    }
+
+    private IEnumerator BounceCell(RectTransform cellRect)
+    {
+        if (cellRect == null) yield break;
+
+        float elapsed = 0f;
+        while (elapsed < BOUNCE_DURATION)
+        {
+            elapsed += Time.deltaTime;
+            float t = elapsed / BOUNCE_DURATION;
+
+            // 스퀴시: 1.0 → 1.15 → 1.0
+            float scale;
+            if (t < 0.4f)
+                scale = Mathf.Lerp(1f, BOUNCE_SCALE, t / 0.4f);
+            else
+                scale = Mathf.Lerp(BOUNCE_SCALE, 1f, (t - 0.4f) / 0.6f);
+
+            cellRect.localScale = Vector3.one * scale;
+            yield return null;
+        }
+
+        cellRect.localScale = Vector3.one;
+    }
+
+    private void InitAudio()
+    {
+        Canvas canvas = GetComponentInParent<Canvas>();
+        if (canvas == null) canvas = FindObjectOfType<Canvas>();
+        if (canvas == null) return;
+
+        qubeAudio = canvas.gameObject.GetComponent<QubeAudio>();
+        if (qubeAudio == null)
+            qubeAudio = canvas.gameObject.AddComponent<QubeAudio>();
+
+        qubeAudio.Initialize(canvas.transform);
+
+        if (previewUI != null)
+            previewUI.SetAudio(qubeAudio);
+    }
+
+    private void InitAds()
+    {
+        if (adBanner == null)
+        {
+            adBanner = gameObject.GetComponent<QubeAdBanner>();
+            if (adBanner == null)
+                adBanner = gameObject.AddComponent<QubeAdBanner>();
+        }
+        adBanner.Initialize();
     }
 
     private void InitBackground()

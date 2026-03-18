@@ -40,6 +40,22 @@ public class QubeBlockQueue : MonoBehaviour
         return entry;
     }
 
+    /// <summary>
+    /// 블록을 큐 맨 앞에 다시 넣고, 맨 뒤의 새로 추가된 블록을 제거합니다.
+    /// 취소 시 원래 상태로 복원하는 데 사용됩니다.
+    /// </summary>
+    public void PushFront(QubeBlockEntry entry)
+    {
+        QubeBlockEntry[] arr = GetPreview();
+        queue.Clear();
+        queue.Enqueue(entry);
+        // 마지막 하나(Dequeue 시 추가된 것)를 버리고 나머지 복원
+        for (int i = 0; i < arr.Length - 1; i++)
+        {
+            queue.Enqueue(arr[i]);
+        }
+    }
+
     public QubeBlockEntry[] GetPreview()
     {
         QubeBlockEntry[] preview = new QubeBlockEntry[queue.Count];
@@ -68,6 +84,24 @@ public class QubeBlockQueue : MonoBehaviour
         queue.Enqueue(CreateRandomEntry());
 
         return entry;
+    }
+
+    /// <summary>
+    /// 첫 번째(활성) 블록만 회전합니다. direction: 1=시계, -1=반시계
+    /// </summary>
+    public void RotateFirst(int direction)
+    {
+        if (queue.Count == 0) return;
+
+        QubeBlockEntry[] arr = GetPreview();
+        Vector2Int[] rotated = QubeBlock.ApplyRotation(arr[0].rotatedCells, direction > 0 ? 1 : 3);
+        arr[0] = new QubeBlockEntry(arr[0].shape, rotated);
+
+        queue.Clear();
+        for (int i = 0; i < arr.Length; i++)
+        {
+            queue.Enqueue(arr[i]);
+        }
     }
 
     private QubeBlockEntry CreateRandomEntry()

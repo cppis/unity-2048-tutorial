@@ -1,4 +1,5 @@
 using UnityEngine;
+using UnityEngine.UI;
 using System.Collections;
 using System.Collections.Generic;
 using System.Linq;
@@ -10,6 +11,8 @@ public class QubePulseSystem : MonoBehaviour
 
     private const float BONUS_MULTIPLIER_TWO = 1.5f;
     private const float BONUS_MULTIPLIER_THREE_PLUS = 2.0f;
+    private const float CASCADE_CELL_DELAY = 0.03f;
+    private const float CASCADE_FADE_DURATION = 0.2f;
 
     private List<QubeQuad> trackedQuads = new List<QubeQuad>();
 
@@ -34,6 +37,9 @@ public class QubePulseSystem : MonoBehaviour
             }
         }
 
+        // 1.5 소거 셀 비주얼 갱신
+        grid.UpdateCellVisuals();
+
         // 2. 새로운 영역 감지
         List<QubeQuad> detectedQuads = quadDetector.DetectQuads();
 
@@ -48,26 +54,140 @@ public class QubePulseSystem : MonoBehaviour
     }
 
     /// <summary>
-    /// Phase 1에서 Quad 클릭 시 호출: 해당 Quad 소거 + 점수
+    /// Phase 1에서 Quad 클릭 시 호출: 클릭한 Quad + 인접 Quad 연쇄 소거 + 보너스 점수
     /// </summary>
     public void RemoveQuad(QubeQuad quad)
     {
         if (!trackedQuads.Contains(quad)) return;
 
-        int score = quad.GetScore();
+        // BFS로 인접 Quad 연쇄 수집
+        List<QubeQuad> chainQuads = CollectAdjacentChain(quad);
 
-        foreach (var cellPos in quad.cells)
+        // 모든 연쇄 Quad를 trackedQuads에서 제거
+        foreach (var q in chainQuads)
         {
-            grid.SetCellOccupied(cellPos, false, Color.clear, wasCleared: true);
+            trackedQuads.Remove(q);
         }
 
-        trackedQuads.Remove(quad);
+        // 점수 계산: 각 Quad 점수 합산 × 연쇄 보너스
+        int baseScore = 0;
+        foreach (var q in chainQuads)
+        {
+            baseScore += q.GetScore();
+        }
 
-        List<QubeQuad> removed = new List<QubeQuad> { quad };
-        OnPulse?.Invoke(score, removed);
+        float multiplier = GetChainMultiplier(chainQuads.Count);
+        int totalScore = Mathf.RoundToInt(baseScore * multiplier);
 
-        // 소거 후 Quad 재감지 (소거로 인해 기존 Quad가 깨질 수 있음)
+        OnPulse?.Invoke(totalScore, chainQuads);
+
+        StartCoroutine(CascadeRemoveChain(chainQuads));
+    }
+
+    /// <summary>
+    /// BFS로 시작 Quad에 인접한 모든 tracked Quad를 수집합니다.
+    /// </summary>
+    private List<QubeQuad> CollectAdjacentChain(QubeQuad startQuad)
+    {
+        List<QubeQuad> chain = new List<QubeQuad>();
+        Queue<QubeQuad> bfsQueue = new Queue<QubeQuad>();
+        HashSet<QubeQuad> visited = new HashSet<QubeQuad>();
+
+        bfsQueue.Enqueue(startQuad);
+        visited.Add(startQuad);
+
+        while (bfsQueue.Count > 0)
+        {
+            QubeQuad current = bfsQueue.Dequeue();
+            chain.Add(current);
+
+            foreach (var candidate in trackedQuads)
+            {
+                if (visited.Contains(candidate)) continue;
+                if (current.IsAdjacentTo(candidate))
+                {
+                    visited.Add(candidate);
+                    bfsQueue.Enqueue(candidate);
+                }
+            }
+        }
+
+        return chain;
+    }
+
+    private float GetChainMultiplier(int chainCount)
+    {
+        if (chainCount >= 3) return BONUS_MULTIPLIER_THREE_PLUS;
+        if (chainCount >= 2) return BONUS_MULTIPLIER_TWO;
+        return 1f;
+    }
+
+    private IEnumerator CascadeRemoveChain(List<QubeQuad> quads)
+    {
+        Transform placedContainer = grid.GetPlacedBlocksContainer();
+
+        // 각 Quad를 순차적으로 캐스케이드 제거
+        foreach (var quad in quads)
+        {
+            List<Vector2Int> sortedCells = new List<Vector2Int>(quad.cells);
+            sortedCells.Sort((a, b) =>
+            {
+                int sum = (a.x + a.y).CompareTo(b.x + b.y);
+                return sum != 0 ? sum : a.x.CompareTo(b.x);
+            });
+
+            foreach (var cellPos in sortedCells)
+            {
+                string targetName = $"PlacedCell_{cellPos.x}_{cellPos.y}";
+                Transform cellTransform = placedContainer.Find(targetName);
+
+                if (cellTransform != null)
+                {
+                    StartCoroutine(FadeCellOut(cellTransform.gameObject));
+                }
+
+                grid.SetCellOccupied(cellPos, false, Color.clear, wasCleared: true);
+
+                yield return new WaitForSeconds(CASCADE_CELL_DELAY);
+            }
+
+            // Quad 간 딜레이 (연쇄 연출)
+            yield return new WaitForSeconds(CASCADE_FADE_DURATION);
+        }
+
+        // 소거 셀 비주얼 갱신
+        grid.UpdateCellVisuals();
+
+        // 소거 후 Quad 재감지
         RefreshQuads();
+    }
+
+    private IEnumerator FadeCellOut(GameObject cellObj)
+    {
+        Image img = cellObj.GetComponent<Image>();
+        RectTransform rect = cellObj.GetComponent<RectTransform>();
+        if (img == null || rect == null) yield break;
+
+        Color startColor = img.color;
+        Vector3 startScale = rect.localScale;
+        float elapsed = 0f;
+
+        while (elapsed < CASCADE_FADE_DURATION)
+        {
+            if (cellObj == null) yield break;
+
+            elapsed += Time.deltaTime;
+            float t = elapsed / CASCADE_FADE_DURATION;
+
+            // 축소 + 페이드
+            float scale = Mathf.Lerp(1f, 0.3f, t);
+            rect.localScale = startScale * scale;
+            img.color = new Color(startColor.r, startColor.g, startColor.b, 1f - t);
+
+            yield return null;
+        }
+
+        if (cellObj != null) Destroy(cellObj);
     }
 
     /// <summary>
