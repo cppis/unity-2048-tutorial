@@ -364,6 +364,7 @@ public class QubeGameManager : MonoBehaviour
 
         currentBlock.EndDragVisual();
         currentBlock.Place();
+        if (qubeAudio != null) qubeAudio.PlaySnap();
         currentBlock = null;
         currentDragEntry = null;
         if (inputHandler != null) inputHandler.ClearBlock();

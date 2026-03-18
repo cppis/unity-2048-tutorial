@@ -7,12 +7,19 @@ using UnityEngine;
 public class QubeAudio : MonoBehaviour
 {
     private const int SAMPLE_RATE = 44100;
-    private const float TICK_DURATION = 0.015f; // 15ms 짧은 클릭
-    private const float TICK_FREQUENCY = 3200f; // 고주파 틱
+
+    // 틱 사운드 (회전용)
+    private const float TICK_DURATION = 0.015f;
+    private const float TICK_FREQUENCY = 3200f;
     private const float TICK_VOLUME = 0.3f;
+
+    // 배치 사운드 (자성체 흡착)
+    private const float SNAP_DURATION = 0.15f;
+    private const float SNAP_VOLUME = 0.6f;
 
     private AudioSource audioSource;
     private AudioClip tickClip;
+    private AudioClip snapClip;
 
     public void Initialize(Transform parent)
     {
@@ -22,14 +29,19 @@ public class QubeAudio : MonoBehaviour
 
         audioSource.playOnAwake = false;
         tickClip = CreateTickClip();
+        snapClip = CreateSnapClip();
     }
 
     public void PlayTick()
     {
         if (audioSource != null && tickClip != null)
-        {
             audioSource.PlayOneShot(tickClip, TICK_VOLUME);
-        }
+    }
+
+    public void PlaySnap()
+    {
+        if (audioSource != null && snapClip != null)
+            audioSource.PlayOneShot(snapClip, SNAP_VOLUME);
     }
 
     private AudioClip CreateTickClip()
@@ -42,11 +54,9 @@ public class QubeAudio : MonoBehaviour
             float t = (float)i / SAMPLE_RATE;
             float normalizedT = (float)i / sampleCount;
 
-            // 감쇠 엔벨로프: 빠르게 시작 → 급격히 감쇠
             float envelope = 1f - normalizedT;
-            envelope *= envelope; // 제곱 감쇠로 더 날카롭게
+            envelope *= envelope;
 
-            // 사인파 + 약간의 노이즈로 기계적 틱 느낌
             float sine = Mathf.Sin(2f * Mathf.PI * TICK_FREQUENCY * t);
             float noise = (Random.value * 2f - 1f) * 0.15f;
 
@@ -54,6 +64,59 @@ public class QubeAudio : MonoBehaviour
         }
 
         AudioClip clip = AudioClip.Create("Tick", sampleCount, 1, SAMPLE_RATE, false);
+        clip.SetData(samples, 0);
+        return clip;
+    }
+
+    private AudioClip CreateSnapClip()
+    {
+        int sampleCount = Mathf.CeilToInt(SAMPLE_RATE * SNAP_DURATION);
+        float[] samples = new float[sampleCount];
+
+        for (int i = 0; i < sampleCount; i++)
+        {
+            float t = (float)i / SAMPLE_RATE;
+            float normalizedT = (float)i / sampleCount;
+
+            // === 저음 자성체 흡착 사운드 ===
+            // 2단계: 착 충돌(0~20%) → 저음 울림(20~100%)
+
+            float sample = 0f;
+
+            if (normalizedT < 0.2f)
+            {
+                // 1단계: 착! 저음 금속 충돌
+                float hitT = normalizedT / 0.2f;
+                float hitEnv = Mathf.Pow(1f - hitT, 3f);
+
+                // 저음 금속 충돌음
+                float metal1 = Mathf.Sin(2f * Mathf.PI * 140f * t);
+                float metal2 = Mathf.Sin(2f * Mathf.PI * 85f * t) * 0.8f;
+                float sub = Mathf.Sin(2f * Mathf.PI * 45f * t) * 0.9f;
+
+                // 짧은 충돌 노이즈 (착!)
+                float hitNoise = hitT < 0.3f
+                    ? (Random.value * 2f - 1f) * 0.3f * (1f - hitT / 0.3f)
+                    : 0f;
+
+                sample = (metal1 + metal2 + sub + hitNoise) * hitEnv;
+            }
+            else
+            {
+                // 2단계: 깊은 저음 울림
+                float ringT = (normalizedT - 0.2f) / 0.8f;
+                float ringEnv = Mathf.Pow(1f - ringT, 2f) * 0.35f;
+
+                float ring = Mathf.Sin(2f * Mathf.PI * 55f * t);
+                float sub = Mathf.Sin(2f * Mathf.PI * 35f * t) * 0.7f;
+
+                sample = (ring + sub) * ringEnv;
+            }
+
+            samples[i] = sample;
+        }
+
+        AudioClip clip = AudioClip.Create("Snap", sampleCount, 1, SAMPLE_RATE, false);
         clip.SetData(samples, 0);
         return clip;
     }
