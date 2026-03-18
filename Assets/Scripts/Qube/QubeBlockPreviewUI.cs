@@ -1,5 +1,6 @@
 using UnityEngine;
 using UnityEngine.UI;
+using UnityEngine.EventSystems;
 using System.Collections.Generic;
 
 public class QubeBlockPreviewUI : MonoBehaviour
@@ -9,6 +10,8 @@ public class QubeBlockPreviewUI : MonoBehaviour
     private const float MINI_CELL_SIZE = 22f;
     private const float MINI_CELL_SPACING = 2f;
     private const float FIRST_SLOT_SCALE = 1.3f;
+
+    public System.Action<int> OnSlotDragStarted;
 
     private List<RectTransform> slotContainers = new List<RectTransform>();
 
@@ -44,10 +47,15 @@ public class QubeBlockPreviewUI : MonoBehaviour
             RectTransform rect = slotObj.AddComponent<RectTransform>();
             rect.sizeDelta = new Vector2(SLOT_SIZE, SLOT_SIZE);
 
-            // 배경
+            // 배경 (raycast 활성화로 터치/클릭 감지)
             Image bg = slotObj.AddComponent<Image>();
             bg.color = new Color(0.12f, 0.14f, 0.15f, 0.8f);
-            bg.raycastTarget = false;
+            bg.raycastTarget = true;
+
+            // 드래그 감지용 컴포넌트
+            SlotDragHandler dragHandler = slotObj.AddComponent<SlotDragHandler>();
+            dragHandler.slotIndex = i;
+            dragHandler.previewUI = this;
 
             slotContainers.Add(rect);
         }
@@ -61,6 +69,12 @@ public class QubeBlockPreviewUI : MonoBehaviour
         {
             ClearSlot(slotContainers[i]);
             RenderBlockInSlot(slotContainers[i], entries[i], i == 0);
+        }
+
+        // 남은 슬롯 비우기
+        for (int i = count; i < slotContainers.Count; i++)
+        {
+            ClearSlot(slotContainers[i]);
         }
     }
 
@@ -79,7 +93,6 @@ public class QubeBlockPreviewUI : MonoBehaviour
         float cellSpacing = MINI_CELL_SPACING * scale;
         float cellStep = cellSize + cellSpacing;
 
-        // 블록 셀들의 바운드 계산
         Vector2Int min = entry.rotatedCells[0];
         Vector2Int max = entry.rotatedCells[0];
         foreach (var cell in entry.rotatedCells)
@@ -93,7 +106,6 @@ public class QubeBlockPreviewUI : MonoBehaviour
             (max.y - min.y + 1) * cellStep - cellSpacing
         );
 
-        // 각 셀 렌더링 (슬롯 중앙 기준)
         foreach (var cell in entry.rotatedCells)
         {
             GameObject cellObj = new GameObject("MiniCell");
@@ -113,5 +125,31 @@ public class QubeBlockPreviewUI : MonoBehaviour
             img.color = entry.shape.blockColor;
             img.raycastTarget = false;
         }
+    }
+
+    internal void NotifyDragStarted(int slotIndex)
+    {
+        OnSlotDragStarted?.Invoke(slotIndex);
+    }
+
+    public void SetSlotsInteractable(bool interactable)
+    {
+        for (int i = 0; i < slotContainers.Count; i++)
+        {
+            Image bg = slotContainers[i].GetComponent<Image>();
+            if (bg != null)
+                bg.raycastTarget = interactable && (i == 0); // 첫 번째 슬롯만 활성화
+        }
+    }
+}
+
+public class SlotDragHandler : MonoBehaviour, IPointerDownHandler
+{
+    public int slotIndex;
+    public QubeBlockPreviewUI previewUI;
+
+    public void OnPointerDown(PointerEventData eventData)
+    {
+        previewUI.NotifyDragStarted(slotIndex);
     }
 }

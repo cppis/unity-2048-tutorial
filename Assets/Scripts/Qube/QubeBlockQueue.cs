@@ -47,6 +47,29 @@ public class QubeBlockQueue : MonoBehaviour
         return preview;
     }
 
+    public QubeBlockEntry Peek(int index)
+    {
+        QubeBlockEntry[] arr = GetPreview();
+        return arr[index];
+    }
+
+    public QubeBlockEntry DequeueAt(int index)
+    {
+        // 큐를 배열로 변환, 해당 인덱스 제거 후 재구성
+        QubeBlockEntry[] arr = GetPreview();
+        QubeBlockEntry entry = arr[index];
+
+        queue.Clear();
+        for (int i = 0; i < arr.Length; i++)
+        {
+            if (i != index) queue.Enqueue(arr[i]);
+        }
+        // 새 블록 추가하여 큐 크기 유지
+        queue.Enqueue(CreateRandomEntry());
+
+        return entry;
+    }
+
     private QubeBlockEntry CreateRandomEntry()
     {
         QubeBlockShape shape = availableShapes[Random.Range(0, shapeCount)];

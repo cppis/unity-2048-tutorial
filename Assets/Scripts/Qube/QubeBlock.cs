@@ -17,8 +17,13 @@ public class QubeBlock : MonoBehaviour
     public Vector2Int position;
     public QubeGrid grid;
 
+    private const float GHOST_ALPHA = 0.3f;
+    private const float GHOST_OUTLINE_WIDTH = 3f;
+
     private Vector2Int[] currentCells;
     private List<GameObject> cellObjects = new List<GameObject>();
+    private List<GameObject> ghostObjects = new List<GameObject>();
+    private bool ghostEnabled = true;
 
     public void Initialize(QubeBlockShape blockShape, QubeGrid qubeGrid)
     {
@@ -29,6 +34,8 @@ public class QubeBlock : MonoBehaviour
         position = CalculateSpawnPosition();
         InitializeRectTransform();
         CreateVisuals();
+        CreateGhostVisuals();
+        UpdateGhostVisuals();
         UpdatePlacementVisualFeedback();
     }
 
@@ -41,12 +48,21 @@ public class QubeBlock : MonoBehaviour
         position = CalculateSpawnPosition();
         InitializeRectTransform();
         CreateVisuals();
+        CreateGhostVisuals();
+        UpdateGhostVisuals();
         UpdatePlacementVisualFeedback();
+    }
+
+    private Vector2Int spawnPosition = new Vector2Int(-100, -100);
+
+    public void SetSpawnPosition(Vector2Int pos)
+    {
+        spawnPosition = pos;
     }
 
     private Vector2Int CalculateSpawnPosition()
     {
-        return new Vector2Int(QubeGrid.WIDTH / 2 - 1, SPAWN_Y_POSITION);
+        return spawnPosition;
     }
 
     private void InitializeRectTransform()
@@ -113,6 +129,31 @@ public class QubeBlock : MonoBehaviour
             Vector2Int globalPos = position + currentCells[i];
             RectTransform rect = cellObjects[i].GetComponent<RectTransform>();
             rect.anchoredPosition = CalculateCellPosition(globalPos, cellStep);
+            cellObjects[i].SetActive(true);
+        }
+    }
+
+    /// <summary>
+    /// 화면 좌표 기준으로 블록 위치 설정 (그리드 밖에서 드래그 중일 때 사용)
+    /// </summary>
+    public void SetScreenPosition(Vector2 screenPos, RectTransform canvasRect, Camera uiCamera)
+    {
+        Vector2 localPoint;
+        RectTransformUtility.ScreenPointToLocalPointInRectangle(
+            canvasRect, screenPos, uiCamera, out localPoint);
+
+        // 블록의 부모 기준 위치 설정
+        RectTransform rect = GetComponent<RectTransform>();
+        rect.anchoredPosition = localPoint;
+
+        // 셀들을 블록 중심 기준으로 재배치
+        float cellStep = grid.cellSize + grid.spacing;
+        for (int i = 0; i < currentCells.Length; i++)
+        {
+            Vector2Int cell = currentCells[i];
+            RectTransform cellRect = cellObjects[i].GetComponent<RectTransform>();
+            cellRect.anchoredPosition = new Vector2(cell.x * cellStep, cell.y * cellStep);
+            cellObjects[i].SetActive(true);
         }
     }
 
@@ -184,8 +225,58 @@ public class QubeBlock : MonoBehaviour
         {
             position += direction;
             UpdateVisuals();
-            UpdatePlacementVisualFeedback(); // 이동 후 피드백 업데이트
+            UpdateGhostVisuals();
+            UpdatePlacementVisualFeedback();
         }
+    }
+
+    /// <summary>
+    /// 지정 위치 근처에서 배치 가능한 가장 가까운 위치를 탐색합니다.
+    /// 찾으면 true + outPos, 없으면 false.
+    /// </summary>
+    public bool FindNearestPlaceablePosition(Vector2Int center, out Vector2Int outPos)
+    {
+        outPos = center;
+
+        // 현재 위치가 배치 가능하면 그대로
+        if (IsPositionValid(center, currentCells, checkOccupancy: true))
+        {
+            outPos = center;
+            return true;
+        }
+
+        // BFS로 가까운 위치부터 탐색 (최대 거리 4)
+        for (int dist = 1; dist <= 4; dist++)
+        {
+            for (int dx = -dist; dx <= dist; dx++)
+            {
+                for (int dy = -dist; dy <= dist; dy++)
+                {
+                    if (Mathf.Abs(dx) != dist && Mathf.Abs(dy) != dist) continue; // 테두리만
+                    Vector2Int testPos = center + new Vector2Int(dx, dy);
+                    if (IsPositionValid(testPos, currentCells, checkOccupancy: true))
+                    {
+                        outPos = testPos;
+                        return true;
+                    }
+                }
+            }
+        }
+
+        return false;
+    }
+
+    public void SetPosition(Vector2Int newPosition)
+    {
+        position = newPosition;
+
+        // SetScreenPosition이 anchoredPosition을 바꿨을 수 있으므로 리셋
+        RectTransform rect = GetComponent<RectTransform>();
+        rect.anchoredPosition = Vector2.zero;
+
+        UpdateVisuals();
+        UpdateGhostVisuals();
+        UpdatePlacementVisualFeedback();
     }
 
     /// <summary>
@@ -209,8 +300,134 @@ public class QubeBlock : MonoBehaviour
         return result;
     }
 
+    public void SetGhostEnabled(bool enabled)
+    {
+        ghostEnabled = enabled;
+        UpdateGhostVisuals();
+    }
+
+    private void CreateGhostVisuals()
+    {
+        // 셀 집합 (외곽 변 판별용)
+        HashSet<Vector2Int> cellSet = new HashSet<Vector2Int>(currentCells);
+        Color ghostColor = new Color(1f, 0.2f, 0.2f, 0.8f);
+        float cellStep = grid.cellSize + grid.spacing;
+
+        // 컨테이너
+        GameObject container = new GameObject("GhostOutline");
+        container.transform.SetParent(grid.transform.parent);
+        RectTransform containerRect = container.AddComponent<RectTransform>();
+        containerRect.anchorMin = new Vector2(ANCHOR_CENTER, ANCHOR_CENTER);
+        containerRect.anchorMax = new Vector2(ANCHOR_CENTER, ANCHOR_CENTER);
+        containerRect.pivot = new Vector2(ANCHOR_CENTER, ANCHOR_CENTER);
+        containerRect.anchoredPosition = Vector2.zero;
+        containerRect.sizeDelta = Vector2.zero;
+        containerRect.localScale = Vector3.one;
+
+        // 각 셀의 4방향을 검사하여 외곽 변에만 보더 생성
+        foreach (var cell in currentCells)
+        {
+            // 상: 위 셀이 블록에 없으면 상변 그리기
+            if (!cellSet.Contains(cell + Vector2Int.up))
+                CreateGhostBorder(container.transform, cell, Vector2Int.up, cellStep, ghostColor);
+            // 하
+            if (!cellSet.Contains(cell + Vector2Int.down))
+                CreateGhostBorder(container.transform, cell, Vector2Int.down, cellStep, ghostColor);
+            // 좌
+            if (!cellSet.Contains(cell + Vector2Int.left))
+                CreateGhostBorder(container.transform, cell, Vector2Int.left, cellStep, ghostColor);
+            // 우
+            if (!cellSet.Contains(cell + Vector2Int.right))
+                CreateGhostBorder(container.transform, cell, Vector2Int.right, cellStep, ghostColor);
+        }
+
+        ghostObjects.Add(container);
+    }
+
+    private void CreateGhostBorder(Transform parent, Vector2Int cell, Vector2Int dir, float cellStep, Color color)
+    {
+        float x = cell.x * cellStep;
+        float y = cell.y * cellStep;
+        float bx, by, bw, bh;
+
+        if (dir == Vector2Int.up)
+        {
+            bx = x; by = y + grid.cellSize - GHOST_OUTLINE_WIDTH / 2f;
+            bw = grid.cellSize; bh = GHOST_OUTLINE_WIDTH;
+        }
+        else if (dir == Vector2Int.down)
+        {
+            bx = x; by = y - GHOST_OUTLINE_WIDTH / 2f;
+            bw = grid.cellSize; bh = GHOST_OUTLINE_WIDTH;
+        }
+        else if (dir == Vector2Int.left)
+        {
+            bx = x - GHOST_OUTLINE_WIDTH / 2f; by = y;
+            bw = GHOST_OUTLINE_WIDTH; bh = grid.cellSize;
+        }
+        else // right
+        {
+            bx = x + grid.cellSize - GHOST_OUTLINE_WIDTH / 2f; by = y;
+            bw = GHOST_OUTLINE_WIDTH; bh = grid.cellSize;
+        }
+
+        GameObject obj = new GameObject("GhostEdge");
+        obj.transform.SetParent(parent, false);
+
+        Image img = obj.AddComponent<Image>();
+        img.color = color;
+        img.raycastTarget = false;
+
+        RectTransform rect = obj.GetComponent<RectTransform>();
+        rect.anchorMin = new Vector2(ANCHOR_CENTER, ANCHOR_CENTER);
+        rect.anchorMax = new Vector2(ANCHOR_CENTER, ANCHOR_CENTER);
+        rect.pivot = new Vector2(0f, 0f);
+        rect.anchoredPosition = new Vector2(bx, by);
+        rect.sizeDelta = new Vector2(bw, bh);
+    }
+
+    private void UpdateGhostVisuals()
+    {
+        if (ghostObjects.Count == 0) return;
+
+        bool canPlace = CanPlace();
+        bool showGhost = ghostEnabled && canPlace;
+
+        GameObject ghostObj = ghostObjects[0];
+        ghostObj.SetActive(showGhost);
+
+        if (showGhost)
+        {
+            float cellStep = grid.cellSize + grid.spacing;
+            float gw = QubeGrid.WIDTH * grid.cellSize + (QubeGrid.WIDTH - 1) * grid.spacing;
+            float gh = QubeGrid.HEIGHT * grid.cellSize + (QubeGrid.HEIGHT - 1) * grid.spacing;
+
+            // 컨테이너 위치 = 블록 position(0,0) 셀의 그리드 좌상 기준 위치
+            float xPos = -gw / 2f + position.x * cellStep;
+            float yPos = -gh / 2f + position.y * cellStep;
+
+            RectTransform rect = ghostObj.GetComponent<RectTransform>();
+            rect.anchoredPosition = new Vector2(xPos, yPos);
+        }
+    }
+
+    public void DestroyGhostVisuals()
+    {
+        foreach (var obj in ghostObjects)
+        {
+            if (obj != null) Destroy(obj);
+        }
+        ghostObjects.Clear();
+    }
+
+    private void OnDestroy()
+    {
+        DestroyGhostVisuals();
+    }
+
     public void Place()
     {
+        DestroyGhostVisuals();
         Transform placedContainer = grid.GetPlacedBlocksContainer();
         int blockId = nextBlockId++; // Generate unique block ID
 

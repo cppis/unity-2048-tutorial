@@ -201,7 +201,7 @@ public class QubeQuadDetector : MonoBehaviour
                         if (allBlocksComplete)
                         {
                             // 유효한 quad 발견!
-                            QubeQuad quad = new QubeQuad(quadCells, 0);
+                            QubeQuad quad = new QubeQuad(quadCells);
                             quads.Add(quad);
 
                             // 사용된 블록 표시
@@ -221,86 +221,19 @@ public class QubeQuadDetector : MonoBehaviour
         return quads;
     }
 
-    public void HighlightQuads(List<QubeQuad> quads, int pulseInterval = 4)
+    public void HighlightQuads(List<QubeQuad> quads)
     {
-        Debug.Log($"[HighlightQuads] ===== START ===== quads.Count={quads.Count}, pulseInterval={pulseInterval}");
+        QubeGridLines gridLines = grid.GetGridLines();
+        if (gridLines == null) return;
 
-        // 모든 셀의 하이라이트 및 외곽선 해제
-        for (int x = 0; x < QubeGrid.WIDTH; x++)
-        {
-            for (int y = 0; y < QubeGrid.HEIGHT; y++)
-            {
-                QubeCell cell = grid.GetCell(x, y);
-                if (cell != null && cell.isOccupied)
-                {
-                    // 원본 색상 복원 (그대로 유지)
-                    cell.SetColor(cell.originalColor);
-                    // 외곽선 비활성화 (모든 변)
-                    cell.SetOutline(false, false, false, false);
-                    // 턴 타이머 텍스트 숨김
-                    cell.SetTurnTimer(-1);
-                }
-            }
-        }
+        // 모든 외곽선 해제
+        gridLines.ClearAllOutlines();
 
-        // Quad 셀 하이라이트 및 외곽선 표시
+        // Quad 단위로 연속 아웃라인 표시
         foreach (var quad in quads)
         {
-            // 남은 턴 수 계산
-            int remainingTurns = pulseInterval - quad.turnTimer;
-            Debug.Log($"[HighlightQuads] Highlighting Quad {quad.width}x{quad.height}: turnTimer={quad.turnTimer}, pulseInterval={pulseInterval}, remainingTurns={remainingTurns}");
-
-            // Quad의 rect 실제 중앙 위치 계산 (float)
-            Vector2 rectCenter = quad.GetRectCenterFloat();
-
-            // 중앙에 가장 가까운 셀 찾기
-            Vector2Int centerCell = quad.GetCenter();
-            Debug.Log($"[HighlightQuads] Center cell: ({centerCell.x},{centerCell.y})");
-
-            // cellSize + spacing (QubeGrid에서 85)
-            float cellStep = 80f + 5f;
-
-            // 중앙 셀로부터 rect 중앙까지의 오프셋 계산
-            Vector2 offset = new Vector2(
-                (rectCenter.x - centerCell.x) * cellStep,
-                (rectCenter.y - centerCell.y) * cellStep
-            );
-
-            foreach (var cellPos in quad.cells)
-            {
-                QubeCell cell = grid.GetCell(cellPos);
-                if (cell != null)
-                {
-                    // 밝게 표시 (원본 색상 기준)
-                    Color highlightColor = cell.originalColor * 1.3f;
-                    highlightColor.a = 1f;
-                    cell.SetColor(highlightColor);
-
-                    // 이 셀이 quad의 어느 경계에 있는지 확인
-                    bool isTopEdge = (cellPos.y == quad.maxY);
-                    bool isBottomEdge = (cellPos.y == quad.minY);
-                    bool isLeftEdge = (cellPos.x == quad.minX);
-                    bool isRightEdge = (cellPos.x == quad.maxX);
-
-                    // 외곽 변만 활성화
-                    cell.SetOutline(isTopEdge, isBottomEdge, isLeftEdge, isRightEdge, Color.yellow);
-
-                    // 중앙 셀인지 확인
-                    bool isCenter = (cellPos == centerCell);
-
-                    // 중앙 셀에만 턴 수 표시 (오프셋 적용하여 rect 중앙에 위치)
-                    int timerValue = isCenter ? remainingTurns : -1;
-
-                    if (isCenter)
-                    {
-                        Debug.Log($"[HighlightQuads] Setting timer on CENTER cell ({cellPos.x},{cellPos.y}): value={timerValue}, offset={offset}");
-                    }
-
-                    cell.SetTurnTimer(timerValue, isCenter, isCenter ? offset : (Vector2?)null);
-                }
-            }
+            gridLines.AddQuadOutline(quad.minX, quad.minY, quad.maxX, quad.maxY, Color.yellow);
         }
-
-        Debug.Log($"[HighlightQuads] ===== END ===== Highlighted {quads.Count} Quad(s)");
     }
+
 }
