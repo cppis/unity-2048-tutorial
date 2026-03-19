@@ -12,7 +12,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: f2d15440a8dcc604db21ed868cdb915d, type: 3}
   m_Name: BlockShape_02
   m_EditorClassIdentifier: Assembly-CSharp::QubeBlockShape
-  blockName: 2
+  blockName: 02
   cells:
   - {x: 0, y: 0}
   - {x: 1, y: 0}

@@ -16,8 +16,22 @@ public class QubePulseSystem : MonoBehaviour
 
     private List<QubeQuad> trackedQuads = new List<QubeQuad>();
 
+    private const float CHAIN_DETECT_DELAY = 0.3f;
+
     public delegate void OnPulseDelegate(int score, List<QubeQuad> removedQuads);
     public event OnPulseDelegate OnPulse;
+
+    // 연쇄 소거 이벤트
+    public delegate void OnChainDelegate(int depth, int score);
+    public event OnChainDelegate OnChain;
+
+    // 연쇄 종료 이벤트 (총점)
+    public delegate void OnChainCompleteDelegate(int totalScore, int maxDepth);
+    public event OnChainCompleteDelegate OnChainComplete;
+
+    // 라인 클리어 이벤트
+    public delegate void OnLineClearDelegate(int rowCount, int colCount, bool isAllClear);
+    public event OnLineClearDelegate OnLineClear;
 
     /// <summary>
     /// 블록 배치 후 호출: Quad 감지 + 하이라이트 (소거는 하지 않음)
@@ -81,7 +95,8 @@ public class QubePulseSystem : MonoBehaviour
 
         OnPulse?.Invoke(totalScore, chainQuads);
 
-        StartCoroutine(CascadeRemoveChain(chainQuads));
+        // 연쇄 소거 코루틴 시작
+        StartCoroutine(ChainRemoveCoroutine(chainQuads));
     }
 
     /// <summary>
@@ -158,8 +173,93 @@ public class QubePulseSystem : MonoBehaviour
         // 소거 셀 비주얼 갱신
         grid.UpdateCellVisuals();
 
+        // 라인 클리어 체크
+        CheckLineClear();
+
         // 소거 후 Quad 재감지
         RefreshQuads();
+    }
+
+    /// <summary>
+    /// 연쇄 소거 코루틴: 소거 → 재감지 → 새 쿼드 발견 시 반복
+    /// </summary>
+    private IEnumerator ChainRemoveCoroutine(List<QubeQuad> initialQuads)
+    {
+        int chainDepth = 1;
+        int chainTotalScore = 0;
+
+        // 첫 소거 (이미 OnPulse로 점수 전달됨)
+        yield return StartCoroutine(CascadeRemoveChain(initialQuads));
+
+        // 연쇄 루프
+        while (true)
+        {
+            yield return new WaitForSeconds(CHAIN_DETECT_DELAY);
+
+            // 재감지
+            List<QubeQuad> newQuads = quadDetector.DetectQuads();
+            if (newQuads.Count == 0) break;
+
+            chainDepth++;
+
+            // 새 쿼드들 소거
+            trackedQuads.Clear();
+
+            int baseScore = 0;
+            foreach (var q in newQuads)
+            {
+                baseScore += q.GetScore();
+            }
+
+            float multiplier = GetChainDepthMultiplier(chainDepth);
+            int score = Mathf.RoundToInt(baseScore * multiplier);
+            chainTotalScore += score;
+
+            OnChain?.Invoke(chainDepth, score);
+            OnPulse?.Invoke(score, newQuads);
+
+            yield return StartCoroutine(CascadeRemoveChain(newQuads));
+        }
+
+        // 연쇄 종료
+        if (chainDepth >= 2)
+        {
+            OnChainComplete?.Invoke(chainTotalScore, chainDepth);
+        }
+    }
+
+    private float GetChainDepthMultiplier(int depth)
+    {
+        if (depth >= 4) return 3.0f;
+        if (depth >= 3) return 2.0f;
+        if (depth >= 2) return 1.5f;
+        return 1f;
+    }
+
+    private void CheckLineClear()
+    {
+        List<int> clearedRows, clearedCols;
+        grid.CheckClearedLines(out clearedRows, out clearedCols);
+
+        int totalLines = clearedRows.Count + clearedCols.Count;
+        if (totalLines == 0) return;
+
+        bool isAllClear = grid.IsGridEmpty();
+
+        // 라인 클리어 보너스 점수
+        int lineScore;
+        if (isAllClear)
+        {
+            lineScore = 5000;
+        }
+        else
+        {
+            float lineMultiplier = totalLines >= 3 ? 2.0f : (totalLines >= 2 ? 1.5f : 1.0f);
+            lineScore = Mathf.RoundToInt(500 * totalLines * lineMultiplier);
+        }
+
+        OnLineClear?.Invoke(clearedRows.Count, clearedCols.Count, isAllClear);
+        OnPulse?.Invoke(lineScore, new List<QubeQuad>());
     }
 
     private IEnumerator FadeCellOut(GameObject cellObj)
@@ -240,7 +340,7 @@ public class QubePulseSystem : MonoBehaviour
 
         OnPulse?.Invoke(totalScore, allQuads);
 
-        StartCoroutine(CascadeRemoveChain(allQuads));
+        StartCoroutine(ChainRemoveCoroutine(allQuads));
     }
 
     private void RefreshQuads()

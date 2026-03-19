@@ -162,4 +162,56 @@ public class QubeScoreFeedback : MonoBehaviour
 
         canvasRect.anchoredPosition = originalPos;
     }
+
+    // ==================== v2 연출 ====================
+
+    public void ShowLineClearEffect(int lineCount, bool isAllClear)
+    {
+        string text = isAllClear ? "ALL CLEAR!" : (lineCount >= 2 ? $"PERFECT x{lineCount}!" : "PERFECT LINE!");
+        Color color = isAllClear ? new Color(1f, 0.84f, 0f) : new Color(0.4f, 1f, 0.8f);
+        int fontSize = isAllClear ? 64 : 48;
+
+        GameObject popup = CreateTextObject(text, fontSize, color, Vector2.zero);
+        StartCoroutine(ComboAnimation(popup));
+    }
+
+    public void ShowStarCollect(int points, Vector2 position)
+    {
+        Color starColor = new Color(1f, 0.84f, 0f); // 금색
+        GameObject popup = CreateTextObject($"+{points}", POPUP_FONT_SIZE, starColor, position);
+        StartCoroutine(PopupAnimation(popup));
+    }
+
+    public void ShowStarSetComplete()
+    {
+        Color color = new Color(1f, 0.84f, 0f);
+        GameObject popup = CreateTextObject("STARS COMPLETE!", 52, color, Vector2.zero);
+        StartCoroutine(ComboAnimation(popup));
+    }
+
+    public void ShowChainText(int depth)
+    {
+        string text;
+        Color color;
+        if (depth >= 4)
+        {
+            text = "AMAZING!";
+            color = new Color(1f, 0.18f, 0.47f); // 마젠타
+        }
+        else
+        {
+            text = $"{depth} CHAIN!";
+            color = new Color(1f, 0.72f, 0f); // 앰버
+        }
+
+        GameObject popup = CreateTextObject(text, COMBO_FONT_SIZE, color, Vector2.zero);
+        StartCoroutine(ComboAnimation(popup));
+    }
+
+    public void ShowTotalScore(int total)
+    {
+        Color color = new Color(1f, 1f, 1f);
+        GameObject popup = CreateTextObject($"TOTAL: +{total:N0}", 44, color, Vector2.zero);
+        StartCoroutine(PopupAnimation(popup));
+    }
 }

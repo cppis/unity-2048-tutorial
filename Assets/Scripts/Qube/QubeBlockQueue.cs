@@ -15,7 +15,7 @@ public struct QubeBlockEntry
 
 public class QubeBlockQueue : MonoBehaviour
 {
-    public const int QUEUE_SIZE = 5;
+    public const int QUEUE_SIZE = 3;
 
     private Queue<QubeBlockEntry> queue = new Queue<QubeBlockEntry>();
     private QubeBlockShape[] availableShapes;
@@ -46,13 +46,32 @@ public class QubeBlockQueue : MonoBehaviour
     /// </summary>
     public void PushFront(QubeBlockEntry entry)
     {
+        InsertAt(0, entry);
+    }
+
+    /// <summary>
+    /// 블록을 큐의 지정 위치에 삽입하고, 맨 뒤의 블록을 제거합니다.
+    /// 취소 시 원래 슬롯 위치로 복원하는 데 사용됩니다.
+    /// </summary>
+    public void InsertAt(int index, QubeBlockEntry entry)
+    {
         QubeBlockEntry[] arr = GetPreview();
         queue.Clear();
-        queue.Enqueue(entry);
-        // 마지막 하나(Dequeue 시 추가된 것)를 버리고 나머지 복원
-        for (int i = 0; i < arr.Length - 1; i++)
+
+        // 마지막 하나(DequeueAt 시 추가된 것)를 버리고, 지정 위치에 삽입
+        int insertCount = arr.Length - 1; // 원래 크기로 복원
+        int srcIdx = 0;
+        for (int i = 0; i <= insertCount; i++)
         {
-            queue.Enqueue(arr[i]);
+            if (i == index)
+            {
+                queue.Enqueue(entry);
+            }
+            else
+            {
+                if (srcIdx < arr.Length)
+                    queue.Enqueue(arr[srcIdx++]);
+            }
         }
     }
 
@@ -87,20 +106,20 @@ public class QubeBlockQueue : MonoBehaviour
     }
 
     /// <summary>
-    /// 첫 번째(활성) 블록만 회전합니다. direction: 1=시계, -1=반시계
+    /// 모든 블록을 회전합니다. direction: 1=시계, -1=반시계
     /// </summary>
-    public void RotateFirst(int direction)
+    public void RotateAll(int direction)
     {
         if (queue.Count == 0) return;
 
         QubeBlockEntry[] arr = GetPreview();
-        Vector2Int[] rotated = QubeBlock.ApplyRotation(arr[0].rotatedCells, direction > 0 ? 1 : 3);
-        arr[0] = new QubeBlockEntry(arr[0].shape, rotated);
+        int rotAmount = direction > 0 ? 1 : 3;
 
         queue.Clear();
         for (int i = 0; i < arr.Length; i++)
         {
-            queue.Enqueue(arr[i]);
+            Vector2Int[] rotated = QubeBlock.ApplyRotation(arr[i].rotatedCells, rotAmount);
+            queue.Enqueue(new QubeBlockEntry(arr[i].shape, rotated));
         }
     }
 

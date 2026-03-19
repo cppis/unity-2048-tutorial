@@ -10,9 +10,9 @@ using System.Collections.Generic;
 public class QubeGridLines : MonoBehaviour
 {
     public int gridWidth = 10;
-    public int gridHeight = 8;
-    public float cellSize = 80f;
-    public float spacing = 5f;
+    public int gridHeight = 10;
+    public float cellSize = 65f;
+    public float spacing = 4f;
     public float lineThickness = 2f;
     public Color lineColor = new Color(0.3f, 0.35f, 0.38f, 1f);
 
@@ -65,22 +65,33 @@ public class QubeGridLines : MonoBehaviour
         CreateRect("Border_Left", left - bHalf, bottom - bHalf, borderThickness, totalHeight + borderThickness);
         CreateRect("Border_Right", right - bHalf, bottom - bHalf, borderThickness, totalHeight + borderThickness);
 
-        // 세로 내부 라인 (글로우 + 라인)
+        // 세로 내부 라인 (글로우 + 라인) — 중간선만 2배 두께
+        float midThickness = lineThickness * 2f;
+        float midGlowThickness = midThickness * GLOW_THICKNESS_MULTIPLIER;
+        int midX = gridWidth / 2;
+        int midY = gridHeight / 2;
+
         for (int x = 1; x < gridWidth; x++)
         {
-            float xPos = left + x * cellStep - spacing / 2f - lineThickness / 2f;
-            float xGlow = left + x * cellStep - spacing / 2f - glowThickness / 2f;
-            CreateRect($"VGlow_{x}", xGlow, bottom, glowThickness, totalHeight, glowColor);
-            CreateRect($"VLine_{x}", xPos, bottom, lineThickness, totalHeight);
+            bool isMid = (x == midX);
+            float thick = isMid ? midThickness : lineThickness;
+            float gThick = isMid ? midGlowThickness : glowThickness;
+            float xPos = left + x * cellStep - spacing / 2f - thick / 2f;
+            float xGlow = left + x * cellStep - spacing / 2f - gThick / 2f;
+            CreateRect($"VGlow_{x}", xGlow, bottom, gThick, totalHeight, glowColor);
+            CreateRect($"VLine_{x}", xPos, bottom, thick, totalHeight);
         }
 
-        // 가로 내부 라인 (글로우 + 라인)
+        // 가로 내부 라인 (글로우 + 라인) — 중간선만 2배 두께
         for (int y = 1; y < gridHeight; y++)
         {
-            float yPos = bottom + y * cellStep - spacing / 2f - lineThickness / 2f;
-            float yGlow = bottom + y * cellStep - spacing / 2f - glowThickness / 2f;
-            CreateRect($"HGlow_{y}", left, yGlow, totalWidth, glowThickness, glowColor);
-            CreateRect($"HLine_{y}", left, yPos, totalWidth, lineThickness);
+            bool isMid = (y == midY);
+            float thick = isMid ? midThickness : lineThickness;
+            float gThick = isMid ? midGlowThickness : glowThickness;
+            float yPos = bottom + y * cellStep - spacing / 2f - thick / 2f;
+            float yGlow = bottom + y * cellStep - spacing / 2f - gThick / 2f;
+            CreateRect($"HGlow_{y}", left, yGlow, totalWidth, gThick, glowColor);
+            CreateRect($"HLine_{y}", left, yPos, totalWidth, thick);
         }
 
         // 교차점 도트

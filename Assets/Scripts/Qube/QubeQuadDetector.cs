@@ -164,7 +164,7 @@ public class QubeQuadDetector : MonoBehaviour
                             if (!isValid) break;
                         }
 
-                        // 최소 4셀 필요
+                        // 최소 4셀 필요 (2x2 이상)
                         if (!isValid || quadCells.Count < 4)
                             continue;
 

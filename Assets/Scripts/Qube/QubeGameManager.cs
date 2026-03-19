@@ -79,6 +79,9 @@ public class QubeGameManager : MonoBehaviour
     private void Start()
     {
         pulseSystem.OnPulse += OnPulseTriggered;
+        pulseSystem.OnChain += OnChainTriggered;
+        pulseSystem.OnChainComplete += OnChainCompleted;
+        pulseSystem.OnLineClear += OnLineClearTriggered;
 
         // InputHandler 자동 탐색 (Inspector에서 연결 안 되어있을 경우)
         if (inputHandler == null)
@@ -117,7 +120,12 @@ public class QubeGameManager : MonoBehaviour
     private void OnDestroy()
     {
         if (pulseSystem != null)
+        {
             pulseSystem.OnPulse -= OnPulseTriggered;
+            pulseSystem.OnChain -= OnChainTriggered;
+            pulseSystem.OnChainComplete -= OnChainCompleted;
+            pulseSystem.OnLineClear -= OnLineClearTriggered;
+        }
         if (previewUI != null)
             previewUI.OnSlotDragStarted -= OnPreviewSlotDragStarted;
     }
@@ -191,17 +199,20 @@ public class QubeGameManager : MonoBehaviour
         }
     }
 
-    private void EnterDraggingBlock()
+    private int dragSlotIndex = 0; // 드래그 시작한 슬롯 인덱스
+
+    private void EnterDraggingBlock(int slotIndex = 0)
     {
         currentPhase = GamePhase.DraggingBlock;
+        dragSlotIndex = slotIndex;
 
         // 프리뷰 슬롯 터치 비활성화 (EventSystem 간섭 방지)
         if (previewUI != null)
             previewUI.SetSlotsInteractable(false);
 
-        // 큐에서 첫 번째 블록 꺼내 생성 (프리뷰 갱신은 배치 성공 후에)
+        // 선택한 슬롯에서 블록 꺼내기
         QubeBlockEntry entry = blockQueue != null
-            ? blockQueue.Dequeue()
+            ? blockQueue.DequeueAt(slotIndex)
             : new QubeBlockEntry(blockShapes[0], (Vector2Int[])blockShapes[0].cells.Clone());
         currentDragEntry = entry;
 
@@ -288,9 +299,9 @@ public class QubeGameManager : MonoBehaviour
             // 하단 스와이프 → 첫 번째 블록 회전
             if (blockQueue != null)
             {
-                blockQueue.RotateFirst(inputHandler.lastSwipeDirection);
+                blockQueue.RotateAll(inputHandler.lastSwipeDirection);
                 if (previewUI != null)
-                    previewUI.AnimateRotateFirst(blockQueue.GetPreview(), inputHandler.lastSwipeDirection);
+                    previewUI.AnimateRotateAll(blockQueue.GetPreview(), inputHandler.lastSwipeDirection);
             }
         }
         else if (action == QubeInputHandler.InputAction.ClickedQuad)
@@ -349,9 +360,7 @@ public class QubeGameManager : MonoBehaviour
     {
         if (currentPhase != GamePhase.QubeControl) return;
         if (isGameOver || currentBlock != null) return;
-        if (slotIndex != 0) return; // 첫 번째 슬롯만 허용
-
-        EnterDraggingBlock();
+        EnterDraggingBlock(slotIndex);
     }
 
     // ==================== Coroutines ====================
@@ -365,6 +374,7 @@ public class QubeGameManager : MonoBehaviour
         currentBlock.EndDragVisual();
         currentBlock.Place();
         if (qubeAudio != null) qubeAudio.PlaySnap();
+
         currentBlock = null;
         currentDragEntry = null;
         if (inputHandler != null) inputHandler.ClearBlock();
@@ -415,10 +425,10 @@ public class QubeGameManager : MonoBehaviour
         }
         if (inputHandler != null) inputHandler.ClearBlock();
 
-        // 큐에 블록 복원
+        // 큐에 블록 복원 (원래 슬롯 위치로)
         if (currentDragEntry.HasValue && blockQueue != null)
         {
-            blockQueue.PushFront(currentDragEntry.Value);
+            blockQueue.InsertAt(dragSlotIndex, currentDragEntry.Value);
             currentDragEntry = null;
         }
 
@@ -470,6 +480,45 @@ public class QubeGameManager : MonoBehaviour
         }
     }
 
+    private void OnChainTriggered(int depth, int chainScore)
+    {
+        score += chainScore;
+        UpdateUI();
+
+        if (qubeAudio != null) qubeAudio.PlayChain(depth);
+        if (scoreFeedback != null)
+        {
+            scoreFeedback.ShowChainText(depth);
+            if (depth >= 3) scoreFeedback.ShakeScreen(depth * 5f);
+        }
+    }
+
+    private void OnChainCompleted(int totalScore, int maxDepth)
+    {
+        if (scoreFeedback != null)
+            scoreFeedback.ShowTotalScore(totalScore);
+    }
+
+    private void OnLineClearTriggered(int rowCount, int colCount, bool isAllClear)
+    {
+        int totalLines = rowCount + colCount;
+        if (qubeAudio != null) qubeAudio.PlayLineClear();
+        if (scoreFeedback != null)
+            scoreFeedback.ShowLineClearEffect(totalLines, isAllClear);
+    }
+
+    private Vector2 GetCellScreenPosition(Vector2Int pos)
+    {
+        Vector2 gridOffset = grid.GetComponent<RectTransform>().anchoredPosition;
+        float cellStep = grid.cellSize + grid.spacing;
+        float gw = QubeGrid.WIDTH * grid.cellSize + (QubeGrid.WIDTH - 1) * grid.spacing;
+        float gh = QubeGrid.HEIGHT * grid.cellSize + (QubeGrid.HEIGHT - 1) * grid.spacing;
+        return new Vector2(
+            -gw / 2f + pos.x * cellStep + grid.cellSize / 2f + gridOffset.x,
+            -gh / 2f + pos.y * cellStep + grid.cellSize / 2f + gridOffset.y
+        );
+    }
+
     private void UpdateUI()
     {
         if (scoreText != null)
@@ -486,37 +535,40 @@ public class QubeGameManager : MonoBehaviour
     {
         if (blockQueue == null) return true;
 
-        // 첫 번째(활성) 블록의 4가지 회전 모두 검사
-        QubeBlockEntry entry = blockQueue.Peek(0);
+        // 큐의 모든 블록 × 4회전 검사
+        QubeBlockEntry[] preview = blockQueue.GetPreview();
         bool isGridEmpty = grid.IsGridEmpty();
 
-        for (int rot = 0; rot < 4; rot++)
+        foreach (var entry in preview)
         {
-            Vector2Int[] cells = QubeBlock.ApplyRotation(entry.rotatedCells, rot);
-
-            for (int y = 0; y < QubeGrid.HEIGHT; y++)
+            for (int rot = 0; rot < 4; rot++)
             {
-                for (int x = 0; x < QubeGrid.WIDTH; x++)
+                Vector2Int[] cells = QubeBlock.ApplyRotation(entry.rotatedCells, rot);
+
+                for (int y = 0; y < QubeGrid.HEIGHT; y++)
                 {
-                    bool valid = true;
-                    bool hasAdjacent = false;
-
-                    foreach (var cell in cells)
+                    for (int x = 0; x < QubeGrid.WIDTH; x++)
                     {
-                        Vector2Int checkPos = new Vector2Int(x + cell.x, y + cell.y);
-                        if (!grid.IsValidPosition(checkPos) || grid.IsCellOccupied(checkPos))
-                        {
-                            valid = false;
-                            break;
-                        }
-                        if (!isGridEmpty && grid.HasAdjacentOccupied(checkPos))
-                        {
-                            hasAdjacent = true;
-                        }
-                    }
+                        bool valid = true;
+                        bool hasAdjacent = false;
 
-                    if (valid && (isGridEmpty || hasAdjacent))
-                        return true;
+                        foreach (var cell in cells)
+                        {
+                            Vector2Int checkPos = new Vector2Int(x + cell.x, y + cell.y);
+                            if (!grid.IsValidPosition(checkPos) || grid.IsCellOccupied(checkPos))
+                            {
+                                valid = false;
+                                break;
+                            }
+                            if (!isGridEmpty && grid.HasAdjacentOccupied(checkPos))
+                            {
+                                hasAdjacent = true;
+                            }
+                        }
+
+                        if (valid && (isGridEmpty || hasAdjacent))
+                            return true;
+                    }
                 }
             }
         }
@@ -642,6 +694,15 @@ public class QubeGameManager : MonoBehaviour
                 adBanner = gameObject.AddComponent<QubeAdBanner>();
         }
         adBanner.Initialize();
+
+#if UNITY_EDITOR
+        Canvas canvas = GetComponentInParent<Canvas>();
+        if (canvas == null) canvas = FindObjectOfType<Canvas>();
+        if (canvas != null && grid != null)
+        {
+            adBanner.CreateDummyBanner(canvas.transform, grid.GetComponent<RectTransform>());
+        }
+#endif
     }
 
     private void InitBackground()

@@ -122,7 +122,64 @@ public class QubeAdBanner : MonoBehaviour
         }
     }
 #else
-    public void ShowBanner() { }
-    public void HideBanner() { }
+    // ==================== 에디터 더미 배너 ====================
+
+    private const float DUMMY_BANNER_HEIGHT = 350f;
+    private GameObject dummyBanner;
+
+    public void ShowBanner()
+    {
+        if (dummyBanner != null) dummyBanner.SetActive(true);
+    }
+
+    public void HideBanner()
+    {
+        if (dummyBanner != null) dummyBanner.SetActive(false);
+    }
+
+    /// <summary>
+    /// 에디터용 더미 배너를 그리드 위에 생성합니다.
+    /// gridTransform 기준으로 위쪽에 배치됩니다.
+    /// </summary>
+    public void CreateDummyBanner(Transform canvasTransform, RectTransform gridRect)
+    {
+        if (dummyBanner != null) return;
+
+        dummyBanner = new GameObject("DummyAdBanner");
+        dummyBanner.transform.SetParent(canvasTransform, false);
+
+        RectTransform rect = dummyBanner.AddComponent<RectTransform>();
+        rect.anchorMin = new Vector2(0.5f, 0.5f);
+        rect.anchorMax = new Vector2(0.5f, 0.5f);
+        rect.pivot = new Vector2(0.5f, 0.5f);
+
+        // 그리드 위쪽에 배치
+        float gridTop = gridRect.anchoredPosition.y + gridRect.sizeDelta.y / 2f;
+        float bannerY = gridTop + DUMMY_BANNER_HEIGHT / 2f + 140f;
+        rect.anchoredPosition = new Vector2(0f, bannerY);
+        rect.sizeDelta = new Vector2(gridRect.sizeDelta.x, DUMMY_BANNER_HEIGHT);
+
+        // 배경
+        UnityEngine.UI.Image bg = dummyBanner.AddComponent<UnityEngine.UI.Image>();
+        bg.color = new Color(0.15f, 0.15f, 0.2f, 0.85f);
+        bg.raycastTarget = false;
+
+        // "AD" 텍스트
+        GameObject textObj = new GameObject("AdText");
+        textObj.transform.SetParent(dummyBanner.transform, false);
+
+        RectTransform textRect = textObj.AddComponent<RectTransform>();
+        textRect.anchorMin = Vector2.zero;
+        textRect.anchorMax = Vector2.one;
+        textRect.offsetMin = Vector2.zero;
+        textRect.offsetMax = Vector2.zero;
+
+        TMPro.TextMeshProUGUI tmp = textObj.AddComponent<TMPro.TextMeshProUGUI>();
+        tmp.text = "AD BANNER (Editor Preview)";
+        tmp.fontSize = 24;
+        tmp.alignment = TMPro.TextAlignmentOptions.Center;
+        tmp.color = new Color(1f, 1f, 1f, 0.4f);
+        tmp.raycastTarget = false;
+    }
 #endif
 }

@@ -5,14 +5,14 @@ using System.Collections.Generic;
 public class QubeGrid : MonoBehaviour
 {
     public static int WIDTH = 10;
-    public static int HEIGHT = 8;
+    public static int HEIGHT = 10;
 
     private const float ANCHOR_CENTER = 0.5f;
     private const string PLACED_BLOCKS_CONTAINER_NAME = "PlacedBlocks";
     private const string PLACED_CELL_NAME_FORMAT = "PlacedCell_{0}_{1}";
 
-    public float cellSize = 80f;
-    public float spacing = 5f;
+    public float cellSize = 65f;
+    public float spacing = 4f;
 
     [Header("Grid Lines")]
     public float lineThickness = 2f;
@@ -23,6 +23,7 @@ public class QubeGrid : MonoBehaviour
     private GameObject gridLinesObject;
     private QubeGridLines gridLines;
     private Image[,] cellBackgrounds;
+
 
     public void SetSize(int width, int height)
     {
@@ -289,6 +290,43 @@ public class QubeGrid : MonoBehaviour
     public Transform GetPlacedBlocksContainer()
     {
         return placedBlocksContainer.transform;
+    }
+
+    /// <summary>
+    /// 완전히 비어있는 행/열 인덱스를 반환합니다.
+    /// </summary>
+    public void CheckClearedLines(out List<int> clearedRows, out List<int> clearedCols)
+    {
+        clearedRows = new List<int>();
+        clearedCols = new List<int>();
+
+        for (int y = 0; y < HEIGHT; y++)
+        {
+            bool empty = true;
+            for (int x = 0; x < WIDTH; x++)
+            {
+                if (cells[x, y] != null && cells[x, y].isOccupied)
+                {
+                    empty = false;
+                    break;
+                }
+            }
+            if (empty) clearedRows.Add(y);
+        }
+
+        for (int x = 0; x < WIDTH; x++)
+        {
+            bool empty = true;
+            for (int y = 0; y < HEIGHT; y++)
+            {
+                if (cells[x, y] != null && cells[x, y].isOccupied)
+                {
+                    empty = false;
+                    break;
+                }
+            }
+            if (empty) clearedCols.Add(x);
+        }
     }
 
     public void ClearGrid()

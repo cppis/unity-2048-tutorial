@@ -25,6 +25,8 @@ public class QubeBlockShape : ScriptableObject
     public static readonly Color COLOR_LEMON   = new Color(0.90f, 0.90f, 0.20f); // #E6E633
     public static readonly Color COLOR_SALMON  = new Color(0.98f, 0.50f, 0.45f); // #FA807A
     public static readonly Color COLOR_AZURE   = new Color(0.24f, 0.60f, 0.85f); // #3D99D9
+    public static readonly Color COLOR_OLIVE   = new Color(0.60f, 0.73f, 0.35f); // #99BA59
+    public static readonly Color COLOR_PLUM    = new Color(0.73f, 0.33f, 0.60f); // #BA5499
 
     private static readonly Color[] PALETTE = new Color[]
     {
@@ -32,7 +34,7 @@ public class QubeBlockShape : ScriptableObject
         COLOR_PURPLE, COLOR_CORAL, COLOR_TEAL,
         COLOR_GOLD, COLOR_SKY, COLOR_ROSE,
         COLOR_MINT, COLOR_PEACH, COLOR_INDIGO, COLOR_LEMON,
-        COLOR_SALMON, COLOR_AZURE
+        COLOR_SALMON, COLOR_AZURE, COLOR_OLIVE, COLOR_PLUM
     };
 
     /// <summary>
@@ -245,6 +247,36 @@ public class QubeBlockShape : ScriptableObject
             new Vector2Int(0, 1),
             new Vector2Int(1, 1),
             new Vector2Int(0, 2)
+        };
+    }
+
+    public static Vector2Int[] GetL2Shape()
+    {
+        // 큰 L자
+        //  #.
+        //  #.
+        //  ##
+        return new Vector2Int[]
+        {
+            new Vector2Int(0, 0),
+            new Vector2Int(1, 0),
+            new Vector2Int(0, 1),
+            new Vector2Int(0, 2)
+        };
+    }
+
+    public static Vector2Int[] GetL2mShape()
+    {
+        // 큰 L자 거울상
+        //  .#
+        //  .#
+        //  ##
+        return new Vector2Int[]
+        {
+            new Vector2Int(0, 0),
+            new Vector2Int(1, 0),
+            new Vector2Int(1, 1),
+            new Vector2Int(1, 2)
         };
     }
 }

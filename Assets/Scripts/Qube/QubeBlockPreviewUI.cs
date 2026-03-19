@@ -6,9 +6,9 @@ using System.Collections.Generic;
 
 public class QubeBlockPreviewUI : MonoBehaviour
 {
-    private const float SLOT_SIZE = 120f;
-    private const float SLOT_SPACING = 10f;
-    private const float MINI_CELL_SIZE = 22f;
+    private const float SLOT_SIZE = 140f;
+    private const float SLOT_SPACING = 15f;
+    private const float MINI_CELL_SIZE = 24f;
     private const float MINI_CELL_SPACING = 2f;
     private const float FIRST_SLOT_SCALE = 1.3f;
     private const float MINI_BEVEL_THICKNESS = 1.5f;
@@ -59,16 +59,8 @@ public class QubeBlockPreviewUI : MonoBehaviour
             Image bg = slotObj.AddComponent<Image>();
             bg.sprite = CreateRoundedRectSprite(64, 64, 8);
             bg.type = Image.Type.Sliced;
-            bg.color = i == 0
-                ? new Color(0.18f, 0.22f, 0.28f, 0.90f)   // 다음 블록: 밝은 배경
-                : new Color(0.10f, 0.13f, 0.16f, 0.85f);   // 나머지: 기본 어두운 색
+            bg.color = new Color(0.14f, 0.17f, 0.22f, 0.88f);
             bg.raycastTarget = true;
-
-            // 첫 번째 슬롯에 글로우 보더 추가
-            if (i == 0)
-            {
-                AddSlotGlowBorder(slotObj, rect);
-            }
 
             // 드래그 감지용 컴포넌트
             SlotDragHandler dragHandler = slotObj.AddComponent<SlotDragHandler>();
@@ -107,61 +99,72 @@ public class QubeBlockPreviewUI : MonoBehaviour
     /// </summary>
     public void AnimateRotateFirst(QubeBlockEntry[] entries, int direction)
     {
+        AnimateRotateAll(entries, direction);
+    }
+
+    public void AnimateRotateAll(QubeBlockEntry[] entries, int direction)
+    {
         if (rotateCoroutine != null)
         {
-            // 이미 애니메이션 중 → 즉시 스냅 (애니메이션 생략)
             StopCoroutine(rotateCoroutine);
             rotateCoroutine = null;
-            CleanupRotateContainer();
+            CleanupRotateContainers();
             UpdatePreview(entries);
             if (qubeAudio != null) qubeAudio.PlayTick();
             return;
         }
-        rotateCoroutine = StartCoroutine(RotateFirstSlotCoroutine(entries, direction));
+        rotateCoroutine = StartCoroutine(RotateAllSlotsCoroutine(entries, direction));
     }
 
-    private void CleanupRotateContainer()
+    private void CleanupRotateContainers()
     {
-        if (slotContainers.Count == 0) return;
-        RectTransform firstSlot = slotContainers[0];
-        for (int i = firstSlot.childCount - 1; i >= 0; i--)
+        foreach (var slot in slotContainers)
         {
-            Transform child = firstSlot.GetChild(i);
-            if (child.name == "RotateContainer")
-                DestroyImmediate(child.gameObject);
+            for (int i = slot.childCount - 1; i >= 0; i--)
+            {
+                Transform child = slot.GetChild(i);
+                if (child.name == "RotateContainer")
+                    DestroyImmediate(child.gameObject);
+            }
         }
     }
 
-    private IEnumerator RotateFirstSlotCoroutine(QubeBlockEntry[] entries, int direction)
+    private IEnumerator RotateAllSlotsCoroutine(QubeBlockEntry[] entries, int direction)
     {
         if (slotContainers.Count == 0) yield break;
 
-        RectTransform firstSlot = slotContainers[0];
+        // 각 슬롯에 회전 컨테이너 생성
+        List<RectTransform> containers = new List<RectTransform>();
+        int count = Mathf.Min(slotContainers.Count, entries.Length);
 
-        // 블록 셀들만 감싸는 컨테이너 생성
-        GameObject cellContainer = new GameObject("RotateContainer");
-        cellContainer.transform.SetParent(firstSlot, false);
-        RectTransform containerRect = cellContainer.AddComponent<RectTransform>();
-        containerRect.anchorMin = new Vector2(0.5f, 0.5f);
-        containerRect.anchorMax = new Vector2(0.5f, 0.5f);
-        containerRect.pivot = new Vector2(0.5f, 0.5f);
-        containerRect.anchoredPosition = Vector2.zero;
-        containerRect.sizeDelta = Vector2.zero;
-
-        // 기존 셀(MiniCell)들을 컨테이너로 이동 (GlowBorder 등 배경은 그대로)
-        List<Transform> cellsToMove = new List<Transform>();
-        for (int i = firstSlot.childCount - 1; i >= 0; i--)
+        for (int s = 0; s < count; s++)
         {
-            Transform child = firstSlot.GetChild(i);
-            if (child.name == "MiniCell")
-                cellsToMove.Add(child);
-        }
-        foreach (var cell in cellsToMove)
-        {
-            cell.SetParent(containerRect, true);
+            RectTransform slot = slotContainers[s];
+
+            GameObject cellContainer = new GameObject("RotateContainer");
+            cellContainer.transform.SetParent(slot, false);
+            RectTransform containerRect = cellContainer.AddComponent<RectTransform>();
+            containerRect.anchorMin = new Vector2(0.5f, 0.5f);
+            containerRect.anchorMax = new Vector2(0.5f, 0.5f);
+            containerRect.pivot = new Vector2(0.5f, 0.5f);
+            containerRect.anchoredPosition = Vector2.zero;
+            containerRect.sizeDelta = Vector2.zero;
+
+            List<Transform> cellsToMove = new List<Transform>();
+            for (int i = slot.childCount - 1; i >= 0; i--)
+            {
+                Transform child = slot.GetChild(i);
+                if (child.name == "MiniCell")
+                    cellsToMove.Add(child);
+            }
+            foreach (var cell in cellsToMove)
+            {
+                cell.SetParent(containerRect, true);
+            }
+
+            containers.Add(containerRect);
         }
 
-        // 컨테이너만 회전 애니메이션 + 틱 사운드 (시작 시 1회)
         if (qubeAudio != null) qubeAudio.PlayTick();
 
         float targetAngle = direction > 0 ? -90f : 90f;
@@ -177,12 +180,18 @@ public class QubeBlockPreviewUI : MonoBehaviour
             float ease = 1f + c3 * Mathf.Pow(t - 1f, 3f) + c1 * Mathf.Pow(t - 1f, 2f);
 
             float angle = Mathf.Lerp(0f, targetAngle, ease);
-            containerRect.localRotation = Quaternion.Euler(0f, 0f, angle);
+            foreach (var cont in containers)
+            {
+                if (cont != null)
+                    cont.localRotation = Quaternion.Euler(0f, 0f, angle);
+            }
             yield return null;
         }
 
-        // 애니메이션 완료 → 컨테이너 제거 + 실제 셀 데이터로 다시 그리기
-        Destroy(cellContainer);
+        foreach (var cont in containers)
+        {
+            if (cont != null) Destroy(cont.gameObject);
+        }
         UpdatePreview(entries);
         rotateCoroutine = null;
     }
@@ -197,7 +206,7 @@ public class QubeBlockPreviewUI : MonoBehaviour
 
     private void RenderBlockInSlot(RectTransform slot, QubeBlockEntry entry, bool isFirst)
     {
-        float scale = isFirst ? FIRST_SLOT_SCALE : 1f;
+        float scale = 1f;
         float cellSize = MINI_CELL_SIZE * scale;
         float cellSpacing = MINI_CELL_SPACING * scale;
         float cellStep = cellSize + cellSpacing;
@@ -234,8 +243,6 @@ public class QubeBlockPreviewUI : MonoBehaviour
             img.color = entry.shape.blockColor;
             img.raycastTarget = false;
 
-            // 미니셀 베벨
-            QubeBevel.AddBevel(cellObj, cellSize, MINI_BEVEL_THICKNESS);
         }
     }
 
@@ -312,7 +319,7 @@ public class QubeBlockPreviewUI : MonoBehaviour
         {
             Image bg = slotContainers[i].GetComponent<Image>();
             if (bg != null)
-                bg.raycastTarget = interactable && (i == 0); // 첫 번째 슬롯만 활성화
+                bg.raycastTarget = interactable; // 모든 슬롯 활성화
         }
     }
 }
