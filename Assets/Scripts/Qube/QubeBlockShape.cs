@@ -45,6 +45,7 @@ public class QubeBlockShape : ScriptableObject
         if (shapes == null) return;
         for (int i = 0; i < shapes.Length; i++)
         {
+            if (shapes[i] == null) continue;
             shapes[i].blockColor = PALETTE[i % PALETTE.Length];
         }
     }

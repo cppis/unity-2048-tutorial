@@ -155,7 +155,7 @@ public class QubeAdBanner : MonoBehaviour
 
         // 그리드 위쪽에 배치
         float gridTop = gridRect.anchoredPosition.y + gridRect.sizeDelta.y / 2f;
-        float bannerY = gridTop + DUMMY_BANNER_HEIGHT / 2f + 140f;
+        float bannerY = gridTop + DUMMY_BANNER_HEIGHT / 2f + 90f;
         rect.anchoredPosition = new Vector2(0f, bannerY);
         rect.sizeDelta = new Vector2(gridRect.sizeDelta.x, DUMMY_BANNER_HEIGHT);
 

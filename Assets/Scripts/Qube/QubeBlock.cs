@@ -387,27 +387,28 @@ public class QubeBlock : MonoBehaviour
         float x = cell.x * cellStep;
         float y = cell.y * cellStep;
         float bx, by, bw, bh;
+        float hw = GHOST_OUTLINE_WIDTH / 2f;
 
-        // 블록 셀 비주얼 크기(cellStep)에 맞춤
+        // 각 바를 양쪽으로 hw만큼 연장하여 모서리 빈틈 제거
         if (dir == Vector2Int.up)
         {
-            bx = x; by = y + cellStep - GHOST_OUTLINE_WIDTH / 2f;
-            bw = cellStep; bh = GHOST_OUTLINE_WIDTH;
+            bx = x - hw; by = y + cellStep - hw;
+            bw = cellStep + hw * 2f; bh = GHOST_OUTLINE_WIDTH;
         }
         else if (dir == Vector2Int.down)
         {
-            bx = x; by = y - GHOST_OUTLINE_WIDTH / 2f;
-            bw = cellStep; bh = GHOST_OUTLINE_WIDTH;
+            bx = x - hw; by = y - hw;
+            bw = cellStep + hw * 2f; bh = GHOST_OUTLINE_WIDTH;
         }
         else if (dir == Vector2Int.left)
         {
-            bx = x - GHOST_OUTLINE_WIDTH / 2f; by = y;
-            bw = GHOST_OUTLINE_WIDTH; bh = cellStep;
+            bx = x - hw; by = y - hw;
+            bw = GHOST_OUTLINE_WIDTH; bh = cellStep + hw * 2f;
         }
         else // right
         {
-            bx = x + cellStep - GHOST_OUTLINE_WIDTH / 2f; by = y;
-            bw = GHOST_OUTLINE_WIDTH; bh = cellStep;
+            bx = x + cellStep - hw; by = y - hw;
+            bw = GHOST_OUTLINE_WIDTH; bh = cellStep + hw * 2f;
         }
 
         GameObject obj = new GameObject("GhostEdge");

@@ -23,8 +23,9 @@ public class QubeBlockQueue : MonoBehaviour
 
     public void Initialize(QubeBlockShape[] shapes, int useShapeCount = -1)
     {
-        availableShapes = shapes;
-        shapeCount = useShapeCount > 0 ? Mathf.Min(useShapeCount, shapes.Length) : shapes.Length;
+        // null 요소 필터링
+        availableShapes = System.Array.FindAll(shapes, s => s != null);
+        shapeCount = useShapeCount > 0 ? Mathf.Min(useShapeCount, availableShapes.Length) : availableShapes.Length;
         queue.Clear();
 
         for (int i = 0; i < QUEUE_SIZE; i++)
